@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">DIYWallPaper</string>
+    <string name="splash_brand_name">DIY Wallpaper</string>
+    <string name="splash_brand_tagline">Create your own aesthetic screen</string>
+    <string name="language">Language</string>
+    <string name="common_continue">continue\n</string>
+    <string name="applying_language_title">Applying language</string>
+    <string name="applying_language_subtitle">Setting up your preferred language...</string>
+    <string name="onboarding_title_1">Discover stunning wallpapers</string>
+    <string name="onboarding_description_1">Browse beautiful static and live wallpapers made for your home and lock screen.</string>
+    <string name="onboarding_title_2">Design with DIY templates</string>
+    <string name="onboarding_description_2">Add your photos into ready-made templates and turn them into personal wallpapers.</string>
+    <string name="onboarding_title_3">Save and set instantly </string>
+    <string name="onboarding_description_3">Export your design, share it with friends, or set it as your wallpaper in one tap.</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_start">Started</string>
+    <string name="welcome_title">Welcome to DIY Wallpaper</string>
+    <string name="welcome_description">Start creating unique wallpapers with templates, photos, stickers, and live previews.</string>
+    <string name="welcome_menu_wallpapers_title">Wallpapers</string>
+    <string name="welcome_menu_wallpapers_desc">Browse static and live wallpapers</string>
+    <string name="welcome_menu_templates_title">DIY Templates</string>
+    <string name="welcome_menu_templates_desc">Add your photos into templates</string>
+    <string name="welcome_menu_create_title">Create</string>
+    <string name="welcome_menu_create_desc">Design with backgrounds and stickers</string>
+    <string name="welcome_btn_start">Start Creating</string>
+    <string name="dashboard_tab_home">Home</string>
+    <string name="dashboard_tab_collection">Collection</string>
+    <string name="dashboard_tab_settings">Settings</string>
+</resources>

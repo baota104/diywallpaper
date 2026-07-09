@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "3065071023",
+    "project_id": "diywallpaper-f1f7b",
+    "storage_bucket": "diywallpaper-f1f7b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3065071023:android:5d757c86eba710d82edb5a",
+        "android_client_info": {
+          "package_name": "com.example.diywallpaper"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgTo4AFy6O2PmKakC24lubn5-Q-JJ58NA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
