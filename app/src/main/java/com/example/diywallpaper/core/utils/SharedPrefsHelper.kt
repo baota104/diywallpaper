@@ -27,6 +27,10 @@ class SharedPrefsHelper @Inject constructor(
         get() = sharedPrefs.getBoolean("has_loaded_cmp", false)
         set(value) = sharedPrefs.edit().putBoolean("has_loaded_cmp", value).apply()
 
+    var liveWallpaperVideoPath: String?
+        get() = sharedPrefs.getString("live_wallpaper_video_path", null)
+        set(value) = sharedPrefs.edit().putString("live_wallpaper_video_path", value).apply()
+
     fun getEffectiveAppOpenCount(): Int {
         return appOpenCount
     }
@@ -36,4 +40,3 @@ class SharedPrefsHelper @Inject constructor(
     }
 
 }
-

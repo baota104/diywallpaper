@@ -79,6 +79,14 @@ val AppTypography  = Typography(
         letterSpacing = 0.sp
     ),
 
+    titleMedium = TextStyle(
+        fontFamily = PlusJakartaSans,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 16.sp,
+        lineHeight = 25.sp,
+        letterSpacing = 0.sp
+    ),
+
     bodyLarge = TextStyle(
         fontFamily = Inter,
         fontWeight = FontWeight.Normal,

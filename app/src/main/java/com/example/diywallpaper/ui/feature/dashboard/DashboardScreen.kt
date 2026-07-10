@@ -10,15 +10,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,12 +53,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diywallpaper.R
+import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.ui.feature.dashboard.collection.DashboardCollectionScreen
 import com.example.diywallpaper.ui.feature.dashboard.home.DashboardHomeScreen
 import com.example.diywallpaper.ui.feature.dashboard.settings.DashboardSettingsScreen
 import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
 import com.example.diywallpaper.ui.theme.Primary
-import com.example.diywallpaper.ui.theme.Surface
 
 private enum class DashboardTab(
     val routeKey: String,
@@ -77,7 +79,9 @@ private enum class DashboardTab(
 
 @Composable
 fun DashboardScreen(
-    initialTab: String = DashboardTab.Home.routeKey
+    initialTab: String = DashboardTab.Home.routeKey,
+    onOpenPreview: (sourceType: PreviewSourceType, categoryId: String, itemId: String) -> Unit = { _, _, _ -> },
+    onCreateFromScratch: () -> Unit = {}
 ) {
     var selectedTab by rememberSaveable(initialTab) {
         mutableStateOf(DashboardTab.fromRouteKey(initialTab))
@@ -85,6 +89,7 @@ fun DashboardScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             DashboardBottomBar(
                 selectedTab = selectedTab,
@@ -98,7 +103,10 @@ fun DashboardScreen(
                 .padding(paddingValues)
         ) {
             when (selectedTab) {
-                DashboardTab.Home -> DashboardHomeScreen()
+                DashboardTab.Home -> DashboardHomeScreen(
+                    onOpenPreview = onOpenPreview,
+                    onCreateFromScratch = onCreateFromScratch
+                )
                 DashboardTab.Collection -> DashboardCollectionScreen()
                 DashboardTab.Settings -> DashboardSettingsScreen()
             }
@@ -112,37 +120,40 @@ private fun DashboardBottomBar(
     onTabSelected: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding(),
-        contentAlignment = Alignment.Center
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                clip = false
+            ),
+        color = Color.White,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp)
-                .shadow(
-                    elevation = 16.dp,
-                    shape = RoundedCornerShape(999.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.04f),
-                    spotColor = Color.Black.copy(alpha = 0.08f)
-                )
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(Color.White)
-                .padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DashboardTab.entries.forEach { tab ->
-                val isSelected = selectedTab == tab
-                DashboardBottomBarItem(
-                    tab = tab,
-                    isSelected = isSelected,
-                    onClick = { onTabSelected(tab) },
-                    modifier = Modifier.weight(1f)
-                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DashboardTab.entries.forEach { tab ->
+                    val isSelected = selectedTab == tab
+                    DashboardBottomBarItem(
+                        tab = tab,
+                        isSelected = isSelected,
+                        onClick = { onTabSelected(tab) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
+
+            Spacer(
+                modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)
+            )
         }
     }
 }

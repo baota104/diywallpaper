@@ -1,6 +1,7 @@
 package com.example.diywallpaper.ui.navigation
 
 import android.app.Activity
+import android.net.Uri
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,12 +16,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.ui.feature.language.ApplyingLanguageRoute
 import com.example.diywallpaper.ui.feature.language.ApplyingLanguageSource
 import com.example.diywallpaper.ui.feature.language.LanguageScreen
 import com.example.diywallpaper.ui.feature.onboarding.OnboardingScreen
 import com.example.diywallpaper.ui.feature.splash.SplashLaunchState
 import com.example.diywallpaper.ui.feature.splash.SplashScreen
+import com.example.diywallpaper.ui.feature.preview.PreviewArgs
+import com.example.diywallpaper.ui.feature.preview.carousel.PreviewCarouselScreen
+import com.example.diywallpaper.ui.feature.preview.device.DevicePreviewScreen
 import com.example.diywallpaper.ui.feature.welcome.WelcomeScreen
 import com.example.diywallpaper.core.utils.popBackStackSafely
 
@@ -142,7 +147,81 @@ fun AppNavGraph(
             )
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getString("tab") ?: "home"
-            com.example.diywallpaper.ui.feature.dashboard.DashboardScreen(initialTab = tab)
+            com.example.diywallpaper.ui.feature.dashboard.DashboardScreen(
+                initialTab = tab,
+                onOpenPreview = { sourceType, categoryId, itemId ->
+                    navController.navigate(
+                        Screen.PreviewCarousel.createRoute(
+                            sourceType = sourceType,
+                            categoryId = categoryId,
+                            itemId = itemId
+                        )
+                    )
+                },
+                onCreateFromScratch = {
+                    navController.navigate(
+                        Screen.PreviewCarousel.createRoute(
+                            sourceType = PreviewSourceType.CREATE_FROM_SCRATCH,
+                            categoryId = "create_from_scratch",
+                            itemId = "create_from_scratch"
+                        )
+                    )
+                }
+            )
+        }
+
+        composable(
+            route = Screen.PreviewCarousel.route,
+            arguments = listOf(
+                navArgument("sourceType") { type = NavType.StringType },
+                navArgument("categoryId") { type = NavType.StringType },
+                navArgument("itemId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val args = backStackEntry.toPreviewArgs()
+            PreviewCarouselScreen(
+                args = args,
+                onBackClick = { navController.popBackStack() },
+                onOpenDevicePreview = { previewArgs ->
+                    navController.navigate(
+                        Screen.DevicePreview.createRoute(
+                            sourceType = previewArgs.sourceType,
+                            categoryId = previewArgs.categoryId,
+                            itemId = previewArgs.initialItemId
+                        )
+                    )
+                },
+                onEditRequested = { _ -> }
+            )
+        }
+
+        composable(
+            route = Screen.DevicePreview.route,
+            arguments = listOf(
+                navArgument("sourceType") { type = NavType.StringType },
+                navArgument("categoryId") { type = NavType.StringType },
+                navArgument("itemId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val args = backStackEntry.toPreviewArgs()
+            DevicePreviewScreen(
+                args = args,
+                onBackClick = { navController.popBackStack() },
+                onApplyClick = { _ -> }
+            )
         }
     }
+}
+
+private fun androidx.navigation.NavBackStackEntry.toPreviewArgs(): PreviewArgs {
+    val sourceType = arguments?.getString("sourceType")
+        ?.let { runCatching { PreviewSourceType.valueOf(it) }.getOrNull() }
+        ?: PreviewSourceType.WALLPAPER
+    val categoryId = Uri.decode(arguments?.getString("categoryId").orEmpty())
+    val itemId = Uri.decode(arguments?.getString("itemId").orEmpty())
+    return PreviewArgs(
+        categoryId = categoryId,
+        initialItemId = itemId,
+        sourceType = sourceType
+    )
 }

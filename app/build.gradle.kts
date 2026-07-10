@@ -1,12 +1,13 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
     id("com.google.dagger.hilt.android")
-    id("com.google.devtools.ksp")
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id ("com.google.gms.google-services")
     id ("com.google.firebase.crashlytics")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -93,17 +94,17 @@ dependencies {
 
 // --- 5. DEPENDENCY INJECTION (HILT) ---
     implementation("com.google.dagger:hilt-android:2.58")
-    ksp("com.google.dagger:hilt-android-compiler:2.58")
+    kapt("com.google.dagger:hilt-android-compiler:2.58")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
 // --- 6. HÌNH ẢNH (COIL) ---
     implementation(libs.coil.compose)
 
 // --- 7. LOCAL DATABASE
-    val roomVersion = "2.7.0-alpha04"
+    val roomVersion = "2.7.2"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion")
 
     // --- 8. TESTING
     testImplementation("junit:junit:4.13.2")
@@ -129,7 +130,7 @@ dependencies {
 // --- 12. BACKGROUND SYNC ---
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.hilt:hilt-work:1.2.0")
-    ksp("androidx.hilt:hilt-compiler:1.2.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
 
 // --- 13. COMPOSE UI TESTING ---
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
@@ -142,4 +143,8 @@ configurations.all {
             useVersion("2.2.0")
         }
     }
+}
+
+kapt {
+    correctErrorTypes = true
 }
