@@ -43,7 +43,7 @@ class WallpaperRepositoryImpl @Inject constructor(
 
     override suspend fun refreshWallpaperCategories(): AppResult<Unit> {
         val shouldRefresh =
-            wallpaperDao.getCategoryCount() == 0 || isStale(syncPreferencesDataStore.lastSyncedAtValue())
+            wallpaperDao.getCategoryCount() == 0 || isStale(syncPreferencesDataStore.wallpaperLastSyncedAtValue())
         if (!shouldRefresh) return AppResult.Success(Unit)
 
         return runCatching {
@@ -111,7 +111,7 @@ class WallpaperRepositoryImpl @Inject constructor(
             diyTemplateDao.clearTemplates()
             diyTemplateDao.insertTemplates(diyEntities)
 
-            syncPreferencesDataStore.updateLastSyncedAt(now)
+            syncPreferencesDataStore.updateWallpaperLastSyncedAt(now)
         }.fold(
             onSuccess = { AppResult.Success(Unit) },
             onFailure = { AppResult.Error(it.toAppError("data_url_full")) }

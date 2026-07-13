@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.example.diywallpaper.data.local.dao.BackgroundCreateDao
 import com.example.diywallpaper.data.local.dao.DiyTemplateDao
 import com.example.diywallpaper.data.local.dao.StickerDao
+import com.example.diywallpaper.data.local.dao.UserDesignDao
 import com.example.diywallpaper.data.local.dao.WallpaperDao
 import com.example.diywallpaper.data.local.db.AppDatabase
 import dagger.Module
@@ -26,6 +27,7 @@ object DatabaseModule {
             "diy_wallpaper.db"
         )
             .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_2_3)
             .build()
     }
 
@@ -41,4 +43,7 @@ object DatabaseModule {
 
     @Provides
     fun provideStickerDao(database: AppDatabase): StickerDao = database.stickerDao()
+
+    @Provides
+    fun provideUserDesignDao(database: AppDatabase): UserDesignDao = database.userDesignDao()
 }

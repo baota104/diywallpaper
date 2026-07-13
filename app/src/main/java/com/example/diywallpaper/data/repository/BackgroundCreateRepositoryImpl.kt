@@ -37,7 +37,7 @@ class BackgroundCreateRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshBackgrounds(): AppResult<Unit> {
-        if (!isStale(syncPreferencesDataStore.lastSyncedAtValue())) return AppResult.Success(Unit)
+        if (!isStale(syncPreferencesDataStore.backgroundLastSyncedAtValue())) return AppResult.Success(Unit)
 
         return runCatching {
             val items = wallpaperRemoteApi
@@ -56,7 +56,7 @@ class BackgroundCreateRepositoryImpl @Inject constructor(
             }
             backgroundCreateDao.clearItems()
             backgroundCreateDao.insertItems(entities)
-            syncPreferencesDataStore.updateLastSyncedAt(System.currentTimeMillis())
+            syncPreferencesDataStore.updateBackgroundLastSyncedAt(System.currentTimeMillis())
         }.fold(
             onSuccess = { AppResult.Success(Unit) },
             onFailure = { AppResult.Error(it.toAppError("bgcreate")) }

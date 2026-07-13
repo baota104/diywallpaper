@@ -24,10 +24,13 @@ import com.example.diywallpaper.ui.feature.onboarding.OnboardingScreen
 import com.example.diywallpaper.ui.feature.splash.SplashLaunchState
 import com.example.diywallpaper.ui.feature.splash.SplashScreen
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
+import com.example.diywallpaper.ui.feature.editor.EditorRoute
+import com.example.diywallpaper.ui.feature.editor.ImportPhotoCropScreen
 import com.example.diywallpaper.ui.feature.preview.carousel.PreviewCarouselScreen
 import com.example.diywallpaper.ui.feature.preview.device.DevicePreviewScreen
 import com.example.diywallpaper.ui.feature.welcome.WelcomeScreen
 import com.example.diywallpaper.core.utils.popBackStackSafely
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun AppNavGraph(
@@ -160,12 +163,15 @@ fun AppNavGraph(
                 },
                 onCreateFromScratch = {
                     navController.navigate(
-                        Screen.PreviewCarousel.createRoute(
+                        Screen.Editor.createRoute(
                             sourceType = PreviewSourceType.CREATE_FROM_SCRATCH,
                             categoryId = "create_from_scratch",
                             itemId = "create_from_scratch"
                         )
                     )
+                },
+                onOpenDesignEditor = { designId ->
+                    navController.navigate(Screen.EditorDesign.createRoute(designId))
                 }
             )
         }
@@ -191,7 +197,146 @@ fun AppNavGraph(
                         )
                     )
                 },
-                onEditRequested = { _ -> }
+                onEditRequested = { previewArgs ->
+                    navController.navigate(
+                        Screen.Editor.createRoute(
+                            sourceType = previewArgs.sourceType,
+                            categoryId = previewArgs.categoryId,
+                            itemId = previewArgs.initialItemId
+                        )
+                    )
+                }
+            )
+        }
+
+        composable(
+            route = Screen.Editor.route,
+            arguments = listOf(
+                navArgument("sourceType") { type = NavType.StringType },
+                navArgument("categoryId") { type = NavType.StringType },
+                navArgument("itemId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val args = backStackEntry.toPreviewArgs()
+            val importPhotoUri by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_uri", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoRatio by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_ratio", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoLeft by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_left", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoTop by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_top", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoRight by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_right", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoBottom by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_bottom", null)
+                .collectAsStateWithLifecycle()
+            EditorRoute(
+                args = args,
+                pendingImportPhotoUri = importPhotoUri,
+                pendingImportPhotoLeft = importPhotoLeft,
+                pendingImportPhotoTop = importPhotoTop,
+                pendingImportPhotoRight = importPhotoRight,
+                pendingImportPhotoBottom = importPhotoBottom,
+                pendingImportPhotoRatio = importPhotoRatio,
+                onImportPhotoConsumed = {
+                    backStackEntry.savedStateHandle["import_photo_uri"] = null
+                    backStackEntry.savedStateHandle["import_photo_left"] = null
+                    backStackEntry.savedStateHandle["import_photo_top"] = null
+                    backStackEntry.savedStateHandle["import_photo_right"] = null
+                    backStackEntry.savedStateHandle["import_photo_bottom"] = null
+                    backStackEntry.savedStateHandle["import_photo_ratio"] = null
+                },
+                onOpenImportPhotoCrop = { imageUri ->
+                    navController.navigate(Screen.ImportPhotoCrop.createRoute(imageUri))
+                },
+                onBackClick = { navController.popBackStack() },
+                onNextClick = { designId ->
+                    navController.navigate(Screen.DevicePreviewDesign.createRoute(designId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.EditorDesign.route,
+            arguments = listOf(
+                navArgument("designId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val designId = Uri.decode(backStackEntry.arguments?.getString("designId").orEmpty())
+            val importPhotoUri by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_uri", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoRatio by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_ratio", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoLeft by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_left", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoTop by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_top", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoRight by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_right", null)
+                .collectAsStateWithLifecycle()
+            val importPhotoBottom by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("import_photo_bottom", null)
+                .collectAsStateWithLifecycle()
+            EditorRoute(
+                args = PreviewArgs(
+                    categoryId = "collection",
+                    initialItemId = designId,
+                    sourceType = PreviewSourceType.CREATE_FROM_SCRATCH
+                ),
+                existingDesignId = designId,
+                pendingImportPhotoUri = importPhotoUri,
+                pendingImportPhotoLeft = importPhotoLeft,
+                pendingImportPhotoTop = importPhotoTop,
+                pendingImportPhotoRight = importPhotoRight,
+                pendingImportPhotoBottom = importPhotoBottom,
+                pendingImportPhotoRatio = importPhotoRatio,
+                onImportPhotoConsumed = {
+                    backStackEntry.savedStateHandle["import_photo_uri"] = null
+                    backStackEntry.savedStateHandle["import_photo_left"] = null
+                    backStackEntry.savedStateHandle["import_photo_top"] = null
+                    backStackEntry.savedStateHandle["import_photo_right"] = null
+                    backStackEntry.savedStateHandle["import_photo_bottom"] = null
+                    backStackEntry.savedStateHandle["import_photo_ratio"] = null
+                },
+                onOpenImportPhotoCrop = { imageUri ->
+                    navController.navigate(Screen.ImportPhotoCrop.createRoute(imageUri))
+                },
+                onBackClick = { navController.popBackStack() },
+                onNextClick = { targetDesignId ->
+                    navController.navigate(Screen.DevicePreviewDesign.createRoute(targetDesignId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.ImportPhotoCrop.route,
+            arguments = listOf(
+                navArgument("imageUri") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val imageUri = Uri.decode(backStackEntry.arguments?.getString("imageUri").orEmpty())
+            ImportPhotoCropScreen(
+                imageUri = imageUri,
+                onBackClick = { navController.popBackStack() },
+                onNextClick = { cropSpec ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_uri", imageUri)
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_left", cropSpec.normalizedLeft.toString())
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_top", cropSpec.normalizedTop.toString())
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_right", cropSpec.normalizedRight.toString())
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_bottom", cropSpec.normalizedBottom.toString())
+                    navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_ratio", cropSpec.ratio?.name)
+                    navController.popBackStack()
+                }
             )
         }
 
@@ -206,6 +351,24 @@ fun AppNavGraph(
             val args = backStackEntry.toPreviewArgs()
             DevicePreviewScreen(
                 args = args,
+                onBackClick = { navController.popBackStack() },
+                onApplyClick = { _ -> }
+            )
+        }
+
+        composable(
+            route = Screen.DevicePreviewDesign.route,
+            arguments = listOf(
+                navArgument("designId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val designId = Uri.decode(backStackEntry.arguments?.getString("designId").orEmpty())
+            DevicePreviewScreen(
+                args = PreviewArgs(
+                    categoryId = "collection",
+                    initialItemId = designId,
+                    sourceType = PreviewSourceType.CREATE_FROM_SCRATCH
+                ),
                 onBackClick = { navController.popBackStack() },
                 onApplyClick = { _ -> }
             )

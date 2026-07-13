@@ -16,6 +16,7 @@ data class DevicePreviewUiState(
     val isApplyingWallpaper: Boolean = false,
     val showTargetDialog: Boolean = false,
     val launchIntent: Intent? = null,
+    val designExportPath: String? = null,
     val successMessage: String? = null,
     val errorMessage: String? = null
 )

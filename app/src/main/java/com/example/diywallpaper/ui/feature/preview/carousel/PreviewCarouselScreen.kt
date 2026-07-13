@@ -169,7 +169,7 @@ fun PreviewCarouselContent(
                                     ) {
                                         Text(
                                             text = stringResource(id = uiState.currentAction.toLabelRes()),
-                                            color = androidx.compose.ui.graphics.Color.White,
+                                            color = Color.White,
                                             style = MaterialTheme.typography.labelLarge.copy(
                                                 fontWeight = FontWeight.Bold
                                             )

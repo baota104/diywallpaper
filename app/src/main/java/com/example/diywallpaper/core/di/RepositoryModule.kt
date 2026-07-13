@@ -5,10 +5,12 @@ import com.example.diywallpaper.data.remote.ndk.NativeEndpointProvider
 import com.example.diywallpaper.data.repository.BackgroundCreateRepositoryImpl
 import com.example.diywallpaper.data.repository.DiyRepositoryImpl
 import com.example.diywallpaper.data.repository.StickerRepositoryImpl
+import com.example.diywallpaper.data.repository.UserDesignRepositoryImpl
 import com.example.diywallpaper.data.repository.WallpaperRepositoryImpl
 import com.example.diywallpaper.domain.repository.BackgroundCreateRepository
 import com.example.diywallpaper.domain.repository.DiyRepository
 import com.example.diywallpaper.domain.repository.StickerRepository
+import com.example.diywallpaper.domain.repository.UserDesignRepository
 import com.example.diywallpaper.domain.repository.WallpaperRepository
 import dagger.Binds
 import dagger.Module
@@ -38,4 +40,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindStickerRepository(repository: StickerRepositoryImpl): StickerRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserDesignRepository(repository: UserDesignRepositoryImpl): UserDesignRepository
 }

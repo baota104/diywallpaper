@@ -101,5 +101,13 @@ val AppTypography  = Typography(
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.5.sp
+    ),
+
+    labelSmall = TextStyle(
+        fontFamily = Inter,
+        fontWeight = FontWeight.Medium,
+        fontSize = 10.sp,
+        lineHeight = 13.sp,
+        letterSpacing = 0.5.sp
     )
 )

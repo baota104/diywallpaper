@@ -19,17 +19,41 @@ class SyncPreferencesDataStore @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private companion object {
-        val LAST_SYNCED_AT = longPreferencesKey("last_synced_at")
+        val LAST_SYNCED_AT_WALLPAPERS = longPreferencesKey("last_synced_at_wallpapers")
+        val LAST_SYNCED_AT_BACKGROUNDS = longPreferencesKey("last_synced_at_backgrounds")
+        val LAST_SYNCED_AT_STICKERS = longPreferencesKey("last_synced_at_stickers")
     }
 
-    val lastSyncedAt: Flow<Long> = context.syncPreferencesDataStore.data
-        .map { preferences: Preferences -> preferences[LAST_SYNCED_AT] ?: 0L }
+    val wallpaperLastSyncedAt: Flow<Long> = context.syncPreferencesDataStore.data
+        .map { preferences: Preferences -> preferences[LAST_SYNCED_AT_WALLPAPERS] ?: 0L }
 
-    suspend fun updateLastSyncedAt(value: Long) {
+    val backgroundLastSyncedAt: Flow<Long> = context.syncPreferencesDataStore.data
+        .map { preferences: Preferences -> preferences[LAST_SYNCED_AT_BACKGROUNDS] ?: 0L }
+
+    val stickerLastSyncedAt: Flow<Long> = context.syncPreferencesDataStore.data
+        .map { preferences: Preferences -> preferences[LAST_SYNCED_AT_STICKERS] ?: 0L }
+
+    suspend fun updateWallpaperLastSyncedAt(value: Long) {
         context.syncPreferencesDataStore.edit { preferences ->
-            preferences[LAST_SYNCED_AT] = value
+            preferences[LAST_SYNCED_AT_WALLPAPERS] = value
         }
     }
 
-    suspend fun lastSyncedAtValue(): Long = lastSyncedAt.first()
+    suspend fun updateBackgroundLastSyncedAt(value: Long) {
+        context.syncPreferencesDataStore.edit { preferences ->
+            preferences[LAST_SYNCED_AT_BACKGROUNDS] = value
+        }
+    }
+
+    suspend fun updateStickerLastSyncedAt(value: Long) {
+        context.syncPreferencesDataStore.edit { preferences ->
+            preferences[LAST_SYNCED_AT_STICKERS] = value
+        }
+    }
+
+    suspend fun wallpaperLastSyncedAtValue(): Long = wallpaperLastSyncedAt.first()
+
+    suspend fun backgroundLastSyncedAtValue(): Long = backgroundLastSyncedAt.first()
+
+    suspend fun stickerLastSyncedAtValue(): Long = stickerLastSyncedAt.first()
 }

@@ -37,7 +37,7 @@ class StickerRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshStickers(): AppResult<Unit> {
-        if (!isStale(syncPreferencesDataStore.lastSyncedAtValue())) return AppResult.Success(Unit)
+        if (!isStale(syncPreferencesDataStore.stickerLastSyncedAtValue())) return AppResult.Success(Unit)
 
         return runCatching {
             val items = wallpaperRemoteApi
@@ -56,7 +56,7 @@ class StickerRepositoryImpl @Inject constructor(
             }
             stickerDao.clearItems()
             stickerDao.insertItems(entities)
-            syncPreferencesDataStore.updateLastSyncedAt(System.currentTimeMillis())
+            syncPreferencesDataStore.updateStickerLastSyncedAt(System.currentTimeMillis())
         }.fold(
             onSuccess = { AppResult.Success(Unit) },
             onFailure = { AppResult.Error(it.toAppError("stickers")) }

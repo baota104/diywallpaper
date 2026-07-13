@@ -30,4 +30,32 @@ sealed class Screen(val route: String) {
             return "preview/device/${sourceType.name}/${Uri.encode(categoryId)}/${Uri.encode(itemId)}"
         }
     }
+
+    object DevicePreviewDesign :
+        Screen("preview/device/design/{designId}") {
+        fun createRoute(designId: String): String {
+            return "preview/device/design/${Uri.encode(designId)}"
+        }
+    }
+
+    object Editor :
+        Screen("editor/{sourceType}/{categoryId}/{itemId}") {
+        fun createRoute(sourceType: PreviewSourceType, categoryId: String, itemId: String): String {
+            return "editor/${sourceType.name}/${Uri.encode(categoryId)}/${Uri.encode(itemId)}"
+        }
+    }
+
+    object EditorDesign :
+        Screen("editor/design/{designId}") {
+        fun createRoute(designId: String): String {
+            return "editor/design/${Uri.encode(designId)}"
+        }
+    }
+
+    object ImportPhotoCrop :
+        Screen("editor/import-photo-crop/{imageUri}") {
+        fun createRoute(imageUri: String): String {
+            return "editor/import-photo-crop/${Uri.encode(imageUri)}"
+        }
+    }
 }

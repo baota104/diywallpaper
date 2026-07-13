@@ -9,13 +9,19 @@ import com.example.diywallpaper.domain.model.DiyTemplateType
 import com.example.diywallpaper.domain.model.WallpaperCategory
 import com.example.diywallpaper.domain.model.WallpaperItem
 import com.example.diywallpaper.domain.model.WallpaperType
+import com.example.diywallpaper.domain.model.design.DesignSourceType
+import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.UserDesign
 import com.example.diywallpaper.domain.model.preview.WallpaperApplySource
 import com.example.diywallpaper.domain.model.preview.PreviewPlayableSource
 import com.example.diywallpaper.domain.model.preview.PreviewPrimaryAction
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
+import com.example.diywallpaper.domain.model.preview.WallpaperTarget
 import com.example.diywallpaper.domain.repository.BackgroundCreateRepository
 import com.example.diywallpaper.domain.repository.DiyRepository
+import com.example.diywallpaper.domain.repository.UserDesignRepository
 import com.example.diywallpaper.domain.repository.WallpaperRepository
+import com.example.diywallpaper.domain.usecase.design.GetUserDesignUseCase
 import com.example.diywallpaper.domain.wallpaper.LiveWallpaperLauncher
 import com.example.diywallpaper.domain.wallpaper.LiveWallpaperSourceStore
 import com.example.diywallpaper.domain.usecase.preview.GetPreviewCarouselItemsUseCase
@@ -26,7 +32,6 @@ import com.example.diywallpaper.ui.feature.preview.carousel.PreviewCarouselViewM
 import com.example.diywallpaper.ui.feature.preview.device.DevicePreviewViewModel
 import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
-import com.example.diywallpaper.domain.model.preview.WallpaperTarget
 import com.example.diywallpaper.domain.wallpaper.SystemWallpaperManager
 import com.example.diywallpaper.domain.wallpaper.WallpaperAssetResolver
 import io.mockk.every
@@ -34,6 +39,7 @@ import io.mockk.mockk
 import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,6 +47,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PreviewViewModelPhaseTwoTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
@@ -93,6 +100,7 @@ class PreviewViewModelPhaseTwoTest {
     @Test
     fun `device preview view model resolves playable source and chrome state`() = runTest {
         val viewModel = DevicePreviewViewModel(
+            getUserDesignUseCase = buildUserDesignUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
@@ -127,6 +135,7 @@ class PreviewViewModelPhaseTwoTest {
     @Test
     fun `device preview view model applies static wallpaper successfully`() = runTest {
         val viewModel = DevicePreviewViewModel(
+            getUserDesignUseCase = buildUserDesignUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
@@ -140,6 +149,9 @@ class PreviewViewModelPhaseTwoTest {
             )
         )
         viewModel.onApplyClick()
+        assertTrue(viewModel.uiState.value.showTargetDialog)
+        viewModel.applyStaticWallpaper(WallpaperTarget.HOME)
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertFalse(state.isApplyingWallpaper)
@@ -150,6 +162,7 @@ class PreviewViewModelPhaseTwoTest {
     @Test
     fun `device preview view model returns launch intent for live wallpaper apply`() = runTest {
         val viewModel = DevicePreviewViewModel(
+            getUserDesignUseCase = buildUserDesignUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
@@ -163,11 +176,37 @@ class PreviewViewModelPhaseTwoTest {
             )
         )
         viewModel.onApplyClick()
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertFalse(state.isApplyingWallpaper)
         assertEquals("live.intent", state.launchIntent?.action)
         assertEquals("Live wallpaper is ready. Choose where to apply it.", state.successMessage)
+    }
+
+    @Test
+    fun `device preview view model binds saved design from collection`() = runTest {
+        val viewModel = DevicePreviewViewModel(
+            getUserDesignUseCase = buildUserDesignUseCase(),
+            getPreviewCarouselItemsUseCase = buildUseCase(),
+            setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
+        )
+
+        viewModel.bind(
+            PreviewArgs(
+                categoryId = "collection",
+                initialItemId = "design_1",
+                sourceType = PreviewSourceType.CREATE_FROM_SCRATCH
+            )
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoading)
+        assertEquals(PreviewPrimaryAction.SET_WALLPAPER, state.primaryAction)
+        assertEquals("/tmp/design_1/exported.png", state.designExportPath)
+        assertEquals("Saved Design", state.currentItem?.title)
     }
 
     private fun buildUseCase(): GetPreviewCarouselItemsUseCase {
@@ -232,6 +271,53 @@ class PreviewViewModelPhaseTwoTest {
                     every { intent.action } returns "live.intent"
                     return AppResult.Success(intent)
                 }
+            }
+        )
+    }
+
+    private fun buildUserDesignUseCase(): GetUserDesignUseCase {
+        return GetUserDesignUseCase(
+            object : UserDesignRepository {
+                override fun observeDesigns(): Flow<List<UserDesign>> = flowOf(emptyList())
+
+                override suspend fun getDesign(designId: String): AppResult<UserDesign> {
+                    return AppResult.Success(
+                        UserDesign(
+                            id = designId,
+                            sourceType = DesignSourceType.SCRATCH,
+                            title = "Saved Design",
+                            thumbnailPath = "/tmp/$designId/thumb.webp",
+                            previewPath = "/tmp/$designId/preview.webp",
+                            templateId = null,
+                            projectFilePath = "/tmp/$designId/project.json",
+                            canvasWidth = 1080,
+                            canvasHeight = 1920,
+                            exportedImagePath = "/tmp/$designId/exported.png",
+                            createdAt = 1L,
+                            updatedAt = 2L,
+                            lastOpenedAt = 3L,
+                            isDeleted = false,
+                            schemaVersion = 1
+                        )
+                    )
+                }
+
+                override suspend fun createDraft(project: EditorProject, title: String?) = AppResult.Success(project.id)
+
+                override suspend fun getProject(designId: String) = AppResult.Error(AppError.EmptyResponse)
+
+                override suspend fun saveProject(project: EditorProject, title: String?) = AppResult.Success(Unit)
+
+                override suspend fun renameDesign(designId: String, title: String) = AppResult.Success(Unit)
+
+                override suspend fun updateAssets(
+                    designId: String,
+                    thumbnailPath: String?,
+                    previewPath: String?,
+                    exportedImagePath: String?
+                ) = AppResult.Success(Unit)
+
+                override suspend fun deleteDesign(designId: String) = AppResult.Success(Unit)
             }
         )
     }

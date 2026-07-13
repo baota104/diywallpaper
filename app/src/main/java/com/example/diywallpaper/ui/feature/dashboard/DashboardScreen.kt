@@ -81,7 +81,8 @@ private enum class DashboardTab(
 fun DashboardScreen(
     initialTab: String = DashboardTab.Home.routeKey,
     onOpenPreview: (sourceType: PreviewSourceType, categoryId: String, itemId: String) -> Unit = { _, _, _ -> },
-    onCreateFromScratch: () -> Unit = {}
+    onCreateFromScratch: () -> Unit = {},
+    onOpenDesignEditor: (designId: String) -> Unit = {}
 ) {
     var selectedTab by rememberSaveable(initialTab) {
         mutableStateOf(DashboardTab.fromRouteKey(initialTab))
@@ -107,7 +108,9 @@ fun DashboardScreen(
                     onOpenPreview = onOpenPreview,
                     onCreateFromScratch = onCreateFromScratch
                 )
-                DashboardTab.Collection -> DashboardCollectionScreen()
+                DashboardTab.Collection -> DashboardCollectionScreen(
+                    onOpenDesign = onOpenDesignEditor
+                )
                 DashboardTab.Settings -> DashboardSettingsScreen()
             }
         }
