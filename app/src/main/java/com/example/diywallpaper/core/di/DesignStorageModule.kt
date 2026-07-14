@@ -2,9 +2,11 @@ package com.example.diywallpaper.core.di
 
 import android.content.Context
 import com.example.diywallpaper.data.local.files.AndroidDesignAssetExporter
+import com.example.diywallpaper.data.local.files.AndroidDesignVideoExporter
 import com.example.diywallpaper.data.local.files.DesignFileStore
 import com.example.diywallpaper.data.local.files.JsonDesignFileStore
 import com.example.diywallpaper.domain.repository.DesignAssetExporter
+import com.example.diywallpaper.domain.repository.DesignVideoExporter
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -44,5 +46,14 @@ object DesignStorageModule {
         okHttpClient: OkHttpClient
     ): DesignAssetExporter {
         return AndroidDesignAssetExporter(context, designFileStore, okHttpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDesignVideoExporter(
+        @ApplicationContext context: Context,
+        okHttpClient: OkHttpClient
+    ): DesignVideoExporter {
+        return AndroidDesignVideoExporter(context, okHttpClient)
     }
 }

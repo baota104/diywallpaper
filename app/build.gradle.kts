@@ -120,7 +120,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
 // --- 10. COIL GIF SUPPORT ---
-    implementation("io.coil-kt.coil3:coil-gif:3.5.0")
+    implementation("io.coil-kt:coil-gif:2.6.0")
 
 // --- 11. VIDEO / LIVE WALLPAPER PREVIEW ---
     implementation("androidx.media3:media3-exoplayer:1.8.0")

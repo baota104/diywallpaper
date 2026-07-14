@@ -509,6 +509,27 @@ class EditorViewModelTest {
     }
 
     @Test
+    fun `preparePreviewNavigation skips blocking asset export for animated sticker design`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val exporter = FakeDesignAssetExporter()
+        val viewModel = createViewModel(
+            repository = repository,
+            designAssetExporter = exporter
+        )
+        viewModel.startNewProject(sampleAnimatedStickerProject(), title = "Animated Draft")
+
+        viewModel.preparePreviewNavigation()
+        advanceUntilIdle()
+
+        assertEquals("design_runtime", viewModel.uiState.value.pendingPreviewDesignId)
+        assertTrue(viewModel.uiState.value.isPersisted)
+        assertEquals(1, repository.createdDraftCount)
+        assertEquals(null, exporter.lastProjectId)
+        assertEquals(null, viewModel.uiState.value.previewPath)
+        assertEquals(null, viewModel.uiState.value.exportedImagePath)
+    }
+
+    @Test
     fun `phase 5 observes real background and sticker catalogs`() = runTest(dispatcher) {
         val repository = FakeEditorDesignRepository()
         val backgroundRepository = FakeBackgroundCreateRepository().apply {
@@ -630,6 +651,25 @@ class EditorViewModelTest {
             createdAt = 10L,
             updatedAt = 20L,
             schemaVersion = 1
+        )
+    }
+
+    private fun sampleAnimatedStickerProject(): EditorProject {
+        return sampleProject().copy(
+            layers = listOf(
+                StickerLayer(
+                    id = "animated_sticker",
+                    stickerId = "sticker_animated",
+                    assetPathOrUrl = "https://cdn/sticker-preview.webp",
+                    animatedAssetPathOrUrl = "https://cdn/sticker.gif",
+                    isAnimated = true,
+                    zIndex = 1,
+                    transform = LayerTransform(0f, 0f, 1f, 0f),
+                    isLocked = false,
+                    isHidden = false
+                )
+            ),
+            selectedLayerId = "animated_sticker"
         )
     }
 

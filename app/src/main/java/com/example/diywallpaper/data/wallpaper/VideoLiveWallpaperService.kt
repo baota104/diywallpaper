@@ -19,6 +19,8 @@ class VideoLiveWallpaperService : WallpaperService() {
 
     inner class VideoWallpaperEngine : Engine() {
         private var player: ExoPlayer? = null
+        private var currentVideoPath: String? = null
+        private var currentHolder: SurfaceHolder? = null
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
@@ -27,15 +29,21 @@ class VideoLiveWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
+            currentHolder = holder
             ensurePlayer(holder)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             super.onVisibilityChanged(visible)
-            player?.playWhenReady = visible
+            if (visible) {
+                currentHolder?.let(::ensurePlayer)
+            } else {
+                player?.playWhenReady = false
+            }
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
+            currentHolder = null
             releasePlayer()
             super.onSurfaceDestroyed(holder)
         }
@@ -50,6 +58,13 @@ class VideoLiveWallpaperService : WallpaperService() {
                 ?.takeIf { File(it).exists() }
                 ?: return
 
+            if (player != null && currentVideoPath == videoPath) {
+                player?.setVideoSurfaceHolder(holder)
+                player?.playWhenReady = true
+                return
+            }
+
+            releasePlayer()
             val localPlayer = player ?: ExoPlayer.Builder(applicationContext).build().apply {
                 repeatMode = Player.REPEAT_MODE_ALL
                 volume = 0f
@@ -59,12 +74,14 @@ class VideoLiveWallpaperService : WallpaperService() {
                 playWhenReady = true
             }.also { player = it }
 
+            currentVideoPath = videoPath
             localPlayer.setVideoSurfaceHolder(holder)
         }
 
         private fun releasePlayer() {
             player?.release()
             player = null
+            currentVideoPath = null
         }
     }
 }

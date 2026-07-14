@@ -82,7 +82,8 @@ fun EditorToolSheet(
             availableStickers = availableStickers,
             isLoadingCatalog = isLoadingStickerCatalog,
             modifier = modifier,
-            onAddSticker = onAddSticker
+            onAddSticker = onAddSticker,
+            onDismiss = onDismissToolSheet
         )
         EditorTool.TEXT_BRUSH -> TextBrushToolPanel(
             availableFonts = availableFonts,

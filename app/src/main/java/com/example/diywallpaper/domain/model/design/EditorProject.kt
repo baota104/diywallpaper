@@ -137,6 +137,8 @@ data class StickerLayer(
     override val id: String,
     val stickerId: String? = null,
     val assetPathOrUrl: String,
+    val animatedAssetPathOrUrl: String? = null,
+    val isAnimated: Boolean = false,
     override val zIndex: Int,
     override val transform: LayerTransform,
     override val isLocked: Boolean,

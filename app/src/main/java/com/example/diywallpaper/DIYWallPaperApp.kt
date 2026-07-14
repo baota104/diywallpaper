@@ -9,6 +9,10 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import com.example.diywallpaper.core.utils.SharedPrefsHelper
 import com.example.diywallpaper.core.utils.manager.LocaleManager
 import com.google.firebase.FirebaseApp
@@ -19,7 +23,7 @@ import com.proxglobal.ads.application.ProxApplication
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
-class DIYWallPaperApp : ProxApplication() {
+class DIYWallPaperApp : ProxApplication(), ImageLoaderFactory {
     companion object {
         var instance: DIYWallPaperApp? = null
     }
@@ -108,4 +112,17 @@ class DIYWallPaperApp : ProxApplication() {
 //                }
 //        }
 //    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .crossfade(true)
+            .build()
+    }
 }

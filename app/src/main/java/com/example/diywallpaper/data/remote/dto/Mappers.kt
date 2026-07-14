@@ -106,8 +106,15 @@ fun StickerDto.toDomainOrNull(): StickerItem? {
         rank = rank,
         stickerUrl = stickerUrl,
         thumbnailUrl = stickerUrl,
-        isAnimated = stickerUrl.endsWith(".gif", ignoreCase = true)
+        isAnimated = stickerUrl.isAnimatedStickerAsset()
     )
+}
+
+private fun String.isAnimatedStickerAsset(): Boolean {
+    val cleanUrl = substringBefore("?").lowercase()
+    return cleanUrl.endsWith(".gif") ||
+        cleanUrl.endsWith(".webp") ||
+        cleanUrl.endsWith(".apng")
 }
 
 fun DiyTemplateDataDto.toDomain(diyDataUrl: String): DiyTemplateData {

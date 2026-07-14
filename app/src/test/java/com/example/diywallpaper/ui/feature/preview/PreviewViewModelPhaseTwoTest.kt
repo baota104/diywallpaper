@@ -10,7 +10,12 @@ import com.example.diywallpaper.domain.model.WallpaperCategory
 import com.example.diywallpaper.domain.model.WallpaperItem
 import com.example.diywallpaper.domain.model.WallpaperType
 import com.example.diywallpaper.domain.model.design.DesignSourceType
+import com.example.diywallpaper.domain.model.design.EditorBackground
+import com.example.diywallpaper.domain.model.design.EditorCanvasSpec
 import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
+import com.example.diywallpaper.domain.model.design.LayerTransform
+import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.UserDesign
 import com.example.diywallpaper.domain.model.preview.WallpaperApplySource
 import com.example.diywallpaper.domain.model.preview.PreviewPlayableSource
@@ -18,15 +23,18 @@ import com.example.diywallpaper.domain.model.preview.PreviewPrimaryAction
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.domain.model.preview.WallpaperTarget
 import com.example.diywallpaper.domain.repository.BackgroundCreateRepository
+import com.example.diywallpaper.domain.repository.DesignVideoExporter
 import com.example.diywallpaper.domain.repository.DiyRepository
 import com.example.diywallpaper.domain.repository.UserDesignRepository
 import com.example.diywallpaper.domain.repository.WallpaperRepository
+import com.example.diywallpaper.domain.usecase.design.GetDesignProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.GetUserDesignUseCase
 import com.example.diywallpaper.domain.wallpaper.LiveWallpaperLauncher
 import com.example.diywallpaper.domain.wallpaper.LiveWallpaperSourceStore
 import com.example.diywallpaper.domain.usecase.preview.GetPreviewCarouselItemsUseCase
 import com.example.diywallpaper.domain.usecase.preview.PreviewCarouselPlaybackPolicy
 import com.example.diywallpaper.domain.usecase.wallpaper.SetLiveWallpaperUseCase
+import com.example.diywallpaper.domain.usecase.wallpaper.SetLiveDesignWallpaperUseCase
 import com.example.diywallpaper.domain.usecase.wallpaper.SetStaticWallpaperUseCase
 import com.example.diywallpaper.ui.feature.preview.carousel.PreviewCarouselViewModel
 import com.example.diywallpaper.ui.feature.preview.device.DevicePreviewViewModel
@@ -101,8 +109,10 @@ class PreviewViewModelPhaseTwoTest {
     fun `device preview view model resolves playable source and chrome state`() = runTest {
         val viewModel = DevicePreviewViewModel(
             getUserDesignUseCase = buildUserDesignUseCase(),
+            getDesignProjectUseCase = buildDesignProjectUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveDesignWallpaperUseCase = buildLiveDesignWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
         )
 
@@ -136,8 +146,10 @@ class PreviewViewModelPhaseTwoTest {
     fun `device preview view model applies static wallpaper successfully`() = runTest {
         val viewModel = DevicePreviewViewModel(
             getUserDesignUseCase = buildUserDesignUseCase(),
+            getDesignProjectUseCase = buildDesignProjectUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveDesignWallpaperUseCase = buildLiveDesignWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
         )
 
@@ -163,8 +175,10 @@ class PreviewViewModelPhaseTwoTest {
     fun `device preview view model returns launch intent for live wallpaper apply`() = runTest {
         val viewModel = DevicePreviewViewModel(
             getUserDesignUseCase = buildUserDesignUseCase(),
+            getDesignProjectUseCase = buildDesignProjectUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveDesignWallpaperUseCase = buildLiveDesignWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
         )
 
@@ -188,8 +202,10 @@ class PreviewViewModelPhaseTwoTest {
     fun `device preview view model binds saved design from collection`() = runTest {
         val viewModel = DevicePreviewViewModel(
             getUserDesignUseCase = buildUserDesignUseCase(),
+            getDesignProjectUseCase = buildDesignProjectUseCase(),
             getPreviewCarouselItemsUseCase = buildUseCase(),
             setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveDesignWallpaperUseCase = buildLiveDesignWallpaperUseCase(),
             setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
         )
 
@@ -207,6 +223,36 @@ class PreviewViewModelPhaseTwoTest {
         assertEquals(PreviewPrimaryAction.SET_WALLPAPER, state.primaryAction)
         assertEquals("/tmp/design_1/exported.png", state.designExportPath)
         assertEquals("Saved Design", state.currentItem?.title)
+    }
+
+    @Test
+    fun `device preview applies animated saved design without requiring video url`() = runTest {
+        val repository = buildUserDesignRepository(project = animatedSavedProject("design_live"))
+        val viewModel = DevicePreviewViewModel(
+            getUserDesignUseCase = GetUserDesignUseCase(repository),
+            getDesignProjectUseCase = GetDesignProjectUseCase(repository),
+            getPreviewCarouselItemsUseCase = buildUseCase(),
+            setStaticWallpaperUseCase = buildStaticWallpaperUseCase(),
+            setLiveDesignWallpaperUseCase = buildLiveDesignWallpaperUseCase(),
+            setLiveWallpaperUseCase = buildLiveWallpaperUseCase()
+        )
+
+        viewModel.bind(
+            PreviewArgs(
+                categoryId = "collection",
+                initialItemId = "design_live",
+                sourceType = PreviewSourceType.CREATE_FROM_SCRATCH
+            )
+        )
+        advanceUntilIdle()
+        assertEquals(PreviewPrimaryAction.SET_LIVE_WALLPAPER, viewModel.uiState.value.primaryAction)
+
+        viewModel.onApplyClick()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("live.design.intent", state.launchIntent?.action)
+        assertEquals(null, state.errorMessage)
     }
 
     private fun buildUseCase(): GetPreviewCarouselItemsUseCase {
@@ -250,7 +296,7 @@ class PreviewViewModelPhaseTwoTest {
         )
     }
 
-    private fun buildLiveWallpaperUseCase(): SetLiveWallpaperUseCase {
+    private fun buildLiveWallpaperUseCase(intentAction: String = "live.intent"): SetLiveWallpaperUseCase {
         return SetLiveWallpaperUseCase(
             wallpaperAssetResolver = object : WallpaperAssetResolver {
                 override suspend fun resolveStaticImage(source: WallpaperApplySource.StaticImage): AppResult<File> {
@@ -268,57 +314,103 @@ class PreviewViewModelPhaseTwoTest {
             liveWallpaperLauncher = object : LiveWallpaperLauncher {
                 override fun createLaunchIntent(): AppResult<Intent> {
                     val intent = mockk<Intent>(relaxed = true)
-                    every { intent.action } returns "live.intent"
+                    every { intent.action } returns intentAction
                     return AppResult.Success(intent)
                 }
             }
         )
     }
 
-    private fun buildUserDesignUseCase(): GetUserDesignUseCase {
-        return GetUserDesignUseCase(
-            object : UserDesignRepository {
-                override fun observeDesigns(): Flow<List<UserDesign>> = flowOf(emptyList())
-
-                override suspend fun getDesign(designId: String): AppResult<UserDesign> {
-                    return AppResult.Success(
-                        UserDesign(
-                            id = designId,
-                            sourceType = DesignSourceType.SCRATCH,
-                            title = "Saved Design",
-                            thumbnailPath = "/tmp/$designId/thumb.webp",
-                            previewPath = "/tmp/$designId/preview.webp",
-                            templateId = null,
-                            projectFilePath = "/tmp/$designId/project.json",
-                            canvasWidth = 1080,
-                            canvasHeight = 1920,
-                            exportedImagePath = "/tmp/$designId/exported.png",
-                            createdAt = 1L,
-                            updatedAt = 2L,
-                            lastOpenedAt = 3L,
-                            isDeleted = false,
-                            schemaVersion = 1
-                        )
-                    )
+    private fun buildLiveDesignWallpaperUseCase(): SetLiveDesignWallpaperUseCase {
+        return SetLiveDesignWallpaperUseCase(
+            designVideoExporter = object : DesignVideoExporter {
+                override suspend fun export(project: EditorProject): AppResult<String> {
+                    return AppResult.Success("/tmp/${project.id}.mp4")
                 }
+            },
+            setLiveWallpaperUseCase = buildLiveWallpaperUseCase("live.design.intent")
+        )
+    }
 
-                override suspend fun createDraft(project: EditorProject, title: String?) = AppResult.Success(project.id)
+    private fun buildUserDesignUseCase(): GetUserDesignUseCase {
+        return GetUserDesignUseCase(buildUserDesignRepository())
+    }
 
-                override suspend fun getProject(designId: String) = AppResult.Error(AppError.EmptyResponse)
+    private fun buildDesignProjectUseCase(): GetDesignProjectUseCase {
+        return GetDesignProjectUseCase(buildUserDesignRepository())
+    }
 
-                override suspend fun saveProject(project: EditorProject, title: String?) = AppResult.Success(Unit)
+    private fun buildUserDesignRepository(project: EditorProject? = null): UserDesignRepository {
+        return object : UserDesignRepository {
+            override fun observeDesigns(): Flow<List<UserDesign>> = flowOf(emptyList())
 
-                override suspend fun renameDesign(designId: String, title: String) = AppResult.Success(Unit)
-
-                override suspend fun updateAssets(
-                    designId: String,
-                    thumbnailPath: String?,
-                    previewPath: String?,
-                    exportedImagePath: String?
-                ) = AppResult.Success(Unit)
-
-                override suspend fun deleteDesign(designId: String) = AppResult.Success(Unit)
+            override suspend fun getDesign(designId: String): AppResult<UserDesign> {
+                return AppResult.Success(
+                    UserDesign(
+                        id = designId,
+                        sourceType = DesignSourceType.SCRATCH,
+                        title = "Saved Design",
+                        thumbnailPath = "/tmp/$designId/thumb.webp",
+                        previewPath = "/tmp/$designId/preview.webp",
+                        templateId = null,
+                        projectFilePath = "/tmp/$designId/project.json",
+                        canvasWidth = 1080,
+                        canvasHeight = 1920,
+                        exportedImagePath = "/tmp/$designId/exported.png",
+                        createdAt = 1L,
+                        updatedAt = 2L,
+                        lastOpenedAt = 3L,
+                        isDeleted = false,
+                        schemaVersion = 1
+                    )
+                )
             }
+
+            override suspend fun createDraft(project: EditorProject, title: String?) = AppResult.Success(project.id)
+
+            override suspend fun getProject(designId: String): AppResult<EditorProject> {
+                return project?.let { AppResult.Success(it) } ?: AppResult.Error(AppError.EmptyResponse)
+            }
+
+            override suspend fun saveProject(project: EditorProject, title: String?) = AppResult.Success(Unit)
+
+            override suspend fun renameDesign(designId: String, title: String) = AppResult.Success(Unit)
+
+            override suspend fun updateAssets(
+                designId: String,
+                thumbnailPath: String?,
+                previewPath: String?,
+                exportedImagePath: String?
+            ) = AppResult.Success(Unit)
+
+            override suspend fun deleteDesign(designId: String) = AppResult.Success(Unit)
+        }
+    }
+
+    private fun animatedSavedProject(designId: String): EditorProject {
+        return EditorProject(
+            id = designId,
+            source = EditorProjectSource.Scratch,
+            canvas = EditorCanvasSpec(1080, 1920),
+            background = EditorBackground.SolidColor("#FFFFFF"),
+            layers = listOf(
+                StickerLayer(
+                    id = "sticker_live",
+                    stickerId = "sticker_live",
+                    assetPathOrUrl = "https://cdn/sticker-preview.webp",
+                    animatedAssetPathOrUrl = "https://cdn/sticker.gif",
+                    isAnimated = true,
+                    zIndex = 1,
+                    transform = LayerTransform(10f, 20f, 1f, 0f),
+                    isLocked = false,
+                    isHidden = false
+                )
+            ),
+            placeholders = emptyList(),
+            selectedLayerId = "sticker_live",
+            createdAt = 1L,
+            updatedAt = 2L,
+            schemaVersion = 1
         )
     }
 }

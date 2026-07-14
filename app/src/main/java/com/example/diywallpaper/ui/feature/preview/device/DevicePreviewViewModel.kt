@@ -12,8 +12,11 @@ import com.example.diywallpaper.domain.model.preview.WallpaperApplySource
 import com.example.diywallpaper.domain.model.preview.WallpaperTarget
 import com.example.diywallpaper.domain.model.preview.primaryAction
 import com.example.diywallpaper.domain.model.preview.toPlayableSource
+import com.example.diywallpaper.domain.model.design.hasAnimatedContent
+import com.example.diywallpaper.domain.usecase.design.GetDesignProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.GetUserDesignUseCase
 import com.example.diywallpaper.domain.usecase.preview.GetPreviewCarouselItemsUseCase
+import com.example.diywallpaper.domain.usecase.wallpaper.SetLiveDesignWallpaperUseCase
 import com.example.diywallpaper.domain.usecase.wallpaper.SetLiveWallpaperUseCase
 import com.example.diywallpaper.domain.usecase.wallpaper.SetStaticWallpaperUseCase
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
@@ -29,8 +32,10 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class DevicePreviewViewModel @Inject constructor(
     private val getUserDesignUseCase: GetUserDesignUseCase,
+    private val getDesignProjectUseCase: GetDesignProjectUseCase,
     private val getPreviewCarouselItemsUseCase: GetPreviewCarouselItemsUseCase,
     private val setStaticWallpaperUseCase: SetStaticWallpaperUseCase,
+    private val setLiveDesignWallpaperUseCase: SetLiveDesignWallpaperUseCase,
     private val setLiveWallpaperUseCase: SetLiveWallpaperUseCase
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DevicePreviewUiState())
@@ -63,6 +68,7 @@ class DevicePreviewViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     currentItem = currentItem,
+                    designProject = null,
                     playableSource = currentItem?.toPlayableSource(),
                     primaryAction = currentItem?.primaryAction(),
                     designExportPath = null,
@@ -125,6 +131,30 @@ class DevicePreviewViewModel @Inject constructor(
 
             PreviewPrimaryAction.SET_LIVE_WALLPAPER -> {
                 val currentItem = state.currentItem ?: return
+                val designProject = state.designProject
+                if (designProject != null) {
+                    viewModelScope.launch {
+                        onApplyStarted()
+                        when (val result = setLiveDesignWallpaperUseCase(designProject)) {
+                            is AppResult.Success -> {
+                                _uiState.update { currentState ->
+                                    currentState.copy(
+                                        isApplyingWallpaper = false,
+                                        launchIntent = result.data,
+                                        successMessage = "Live design wallpaper is ready. Choose where to apply it.",
+                                        errorMessage = null
+                                    )
+                                }
+                            }
+
+                            is AppResult.Error -> onApplyFinished(
+                                errorMessage = result.error.toPreviewMessage()
+                            )
+                        }
+                    }
+                    return
+                }
+
                 val videoUrl = currentItem.wallpaperSource?.videoUrl
                     ?: run {
                         onApplyFinished(
@@ -209,16 +239,25 @@ class DevicePreviewViewModel @Inject constructor(
             when (val result = getUserDesignUseCase(designId)) {
                 is AppResult.Success -> {
                     val design = result.data
+                    val designProject = when (val projectResult = getDesignProjectUseCase(design.id)) {
+                        is AppResult.Success -> projectResult.data
+                        is AppResult.Error -> null
+                    }
+                    val hasAnimatedContent = designProject?.hasAnimatedContent() == true
                     val previewPath = design.previewPath ?: design.thumbnailPath ?: design.exportedImagePath
                     val exportPath = design.exportedImagePath ?: previewPath
-                    val currentItem = if (previewPath != null && exportPath != null) {
+                    val currentItem = if (previewPath != null || designProject != null) {
                         PreviewCatalogItem(
                             id = design.id,
                             categoryId = COLLECTION_PREVIEW_CATEGORY_ID,
                             rank = 0,
                             title = design.title ?: "My Design",
-                            kind = PreviewItemKind.WALLPAPER_STATIC,
-                            thumbUrl = previewPath,
+                            kind = if (hasAnimatedContent) {
+                                PreviewItemKind.WALLPAPER_LIVE
+                            } else {
+                                PreviewItemKind.WALLPAPER_STATIC
+                            },
+                            thumbUrl = previewPath.orEmpty(),
                             isFavorite = false,
                             wallpaperSource = WallpaperSource(
                                 imageUrl = previewPath,
@@ -232,6 +271,7 @@ class DevicePreviewViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         currentItem = currentItem,
+                        designProject = designProject,
                         playableSource = currentItem?.toPlayableSource(),
                         primaryAction = currentItem?.primaryAction(),
                         designExportPath = exportPath,
@@ -249,6 +289,7 @@ class DevicePreviewViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         currentItem = null,
+                        designProject = null,
                         playableSource = null,
                         primaryAction = null,
                         designExportPath = null,

@@ -106,12 +106,20 @@ fun DevicePreviewContent(
                         .background(MaterialTheme.colorScheme.background)
                         .padding(paddingValues)
                 ) {
-                    DeviceMockPreview(
-                        item = uiState.currentItem,
-                        isChromeVisible = uiState.isChromeVisible,
-                        videoPreviewManager = videoPreviewManager,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (uiState.designProject != null) {
+                        SavedDesignDevicePreview(
+                            project = uiState.designProject,
+                            isChromeVisible = uiState.isChromeVisible,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        DeviceMockPreview(
+                            item = uiState.currentItem,
+                            isChromeVisible = uiState.isChromeVisible,
+                            videoPreviewManager = videoPreviewManager,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
 
                     PreviewOverlayTopBar(
                         isChromeVisible = uiState.isChromeVisible,

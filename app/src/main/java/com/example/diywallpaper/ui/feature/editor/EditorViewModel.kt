@@ -23,6 +23,7 @@ import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.TextStyleSpec
+import com.example.diywallpaper.domain.model.design.hasAnimatedContent
 import com.example.diywallpaper.domain.usecase.design.CreateDesignDraftUseCase
 import com.example.diywallpaper.domain.usecase.design.DeleteDesignUseCase
 import com.example.diywallpaper.domain.usecase.design.GenerateDesignAssetsUseCase
@@ -439,7 +440,9 @@ class EditorViewModel @Inject constructor(
             StickerLayer(
                 id = generateLayerId("sticker"),
                 stickerId = sticker.id,
-                assetPathOrUrl = sticker.stickerUrl,
+                assetPathOrUrl = sticker.thumbnailUrl.ifBlank { sticker.stickerUrl },
+                animatedAssetPathOrUrl = sticker.stickerUrl.takeIf { sticker.isAnimated },
+                isAnimated = sticker.isAnimated,
                 zIndex = nextZIndex(),
                 transform = transform,
                 isLocked = false,
@@ -629,6 +632,19 @@ class EditorViewModel @Inject constructor(
                     }
                     return@launch
                 }
+            }
+
+            if (project.hasAnimatedContent()) {
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        isGeneratingAssets = false,
+                        pendingPreviewDesignId = designId,
+                        saveMessage = SAVE_SUCCESS_MESSAGE,
+                        errorMessage = null
+                    )
+                }
+                return@launch
             }
 
             when (val result = generateDesignAssetsUseCase(project)) {

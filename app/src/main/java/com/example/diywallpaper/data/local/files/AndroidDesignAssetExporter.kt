@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -48,6 +49,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
 import kotlin.math.max
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -541,7 +543,7 @@ class AndroidDesignAssetExporter @Inject constructor(
                     okHttpClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) return@use null
                         response.body?.bytes()?.let { bytes ->
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            decodeBitmapBytes(bytes)
                         }
                     }
                 }
@@ -561,6 +563,18 @@ class AndroidDesignAssetExporter @Inject constructor(
         }.getOrNull()
         assetCache[model] = bitmap
         return bitmap
+    }
+
+    private fun decodeBitmapBytes(bytes: ByteArray): Bitmap? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ImageDecoder.decodeBitmap(
+                ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+            ) { decoder, _, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        } else {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        }
     }
 
     private fun drawFallbackImageBackground(canvas: Canvas, width: Float, height: Float) {
