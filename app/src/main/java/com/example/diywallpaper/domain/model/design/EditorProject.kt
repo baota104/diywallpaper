@@ -212,6 +212,11 @@ sealed interface DrawLayerData {
     data class EraseStroke(val stroke: BrushStroke) : DrawLayerData
 
     @Serializable
+    data class BrushStack(
+        val items: List<BrushStackItem>
+    ) : DrawLayerData
+
+    @Serializable
     data class StickerTrail(
         val stickerAssetPathOrUrl: String,
         val points: List<StrokePoint>,
@@ -227,6 +232,15 @@ sealed interface DrawLayerData {
         val points: List<StrokePoint>,
         val spacing: Float
     ) : DrawLayerData
+}
+
+@Serializable
+sealed interface BrushStackItem {
+    @Serializable
+    data class Draw(val stroke: BrushStroke) : BrushStackItem
+
+    @Serializable
+    data class Erase(val stroke: BrushStroke) : BrushStackItem
 }
 
 @Serializable

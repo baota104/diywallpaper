@@ -19,6 +19,8 @@ fun EditorToolSheet(
     availableFonts: List<EditorFontOption>,
     textPresets: List<EditorTextPreset>,
     selectedTextLayer: TextLayer?,
+    activeBrushConfig: BrushToolConfig?,
+    activeTextBrushConfig: TextBrushToolConfig?,
     isLoadingBackgroundCatalog: Boolean,
     isLoadingStickerCatalog: Boolean,
     onApplySolidBackground: (String) -> Unit,
@@ -30,7 +32,9 @@ fun EditorToolSheet(
     onApplyPreset: (EditorTextPreset) -> Unit,
     onAddSticker: (StickerItem) -> Unit,
     onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
+    onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
     onSelectLayer: (String?) -> Unit,
     onMoveLayer: (layerId: String, targetIndex: Int) -> Unit,
     onRemoveSelectedLayer: () -> Unit,
@@ -87,14 +91,21 @@ fun EditorToolSheet(
         )
         EditorTool.TEXT_BRUSH -> TextBrushToolPanel(
             availableFonts = availableFonts,
+            config = activeTextBrushConfig,
             modifier = modifier,
+            onTextBrushConfigChanged = onTextBrushConfigChanged,
             onApplyTextBrush = onAddTextBrush
         )
         EditorTool.BRUSH_DRAW,
         EditorTool.BRUSH_ERASE,
         EditorTool.STICKER_BRUSH -> BrushToolPanel(
             modifier = modifier,
-            initialErase = selectedTool == EditorTool.BRUSH_ERASE,
+            config = activeBrushConfig ?: BrushToolConfig(
+                erase = selectedTool == EditorTool.BRUSH_ERASE,
+                colorHex = "#1C1527",
+                brushSize = 28f
+            ),
+            onBrushConfigChanged = onBrushConfigChanged,
             onApplyBrush = onApplyBrush
         )
         EditorTool.PREVIEW -> BackgroundToolPanel(

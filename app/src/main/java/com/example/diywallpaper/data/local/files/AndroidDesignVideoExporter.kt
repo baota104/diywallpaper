@@ -10,6 +10,8 @@ import android.graphics.LinearGradient
 import android.graphics.Movie
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -31,6 +33,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStroke
+import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -44,6 +47,7 @@ import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.domain.repository.DesignVideoExporter
@@ -215,7 +219,19 @@ class AndroidDesignVideoExporter @Inject constructor(
                         is StickerLayer -> drawSticker(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
                         is PhotoLayer -> drawPhoto(canvas, layer, assets, scaleX = 1f, scaleY = 1f)
                         is TextLayer -> drawText(canvas, layer, scaleX = 1f, scaleY = 1f)
-                        is DrawLayer -> drawDrawLayer(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
+                        is DrawLayer -> {
+                            if (layer.drawData.isBrushStackRenderable()) {
+                                drawBrushStrokeStack(
+                                    canvas = canvas,
+                                    layers = listOf(layer),
+                                    width = designWidth,
+                                    height = designHeight
+                                )
+                                true
+                            } else {
+                                drawDrawLayer(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
+                            }
+                        }
                     }
                     if (rendered) renderedLayers += 1
                 }
@@ -357,6 +373,54 @@ class AndroidDesignVideoExporter @Inject constructor(
         return true
     }
 
+    private fun drawBrushStrokeStack(
+        canvas: Canvas,
+        layers: List<DrawLayer>,
+        width: Float,
+        height: Float
+    ) {
+        if (layers.isEmpty()) return
+        layers.sortedBy { it.zIndex }.forEach { layer ->
+            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            val rect = RectF(
+                layer.transform.offsetX + bounds.minX,
+                layer.transform.offsetY + bounds.minY,
+                layer.transform.offsetX + bounds.maxX,
+                layer.transform.offsetY + bounds.maxY
+            )
+            val checkpoint = canvas.saveLayer(0f, 0f, width, height, null)
+            canvas.save()
+            canvas.translate(rect.centerX(), rect.centerY())
+            canvas.rotate(layer.transform.rotation)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.translate(-rect.width() / 2f, -rect.height() / 2f)
+            canvas.translate(-bounds.minX, -bounds.minY)
+            layer.drawData.forEachBrushStackItem { item ->
+                when (item) {
+                    is BrushStackItem.Draw -> drawStroke(
+                        canvas = canvas,
+                        stroke = item.stroke,
+                        scaleX = 1f,
+                        scaleY = 1f,
+                        color = parseColor(item.stroke.colorHex, Color.rgb(29, 23, 38)),
+                        clear = false
+                    )
+
+                    is BrushStackItem.Erase -> drawStroke(
+                        canvas = canvas,
+                        stroke = item.stroke,
+                        scaleX = 1f,
+                        scaleY = 1f,
+                        color = Color.TRANSPARENT,
+                        clear = true
+                    )
+                }
+            }
+            canvas.restore()
+            canvas.restoreToCount(checkpoint)
+        }
+    }
+
     private fun drawDrawLayer(
         canvas: Canvas,
         layer: DrawLayer,
@@ -365,21 +429,37 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleX: Float,
         scaleY: Float
     ): Boolean {
+        val bounds = layer.drawData.renderBounds()
         canvas.save()
-        canvas.translate(layer.transform.offsetX * scaleX, layer.transform.offsetY * scaleY)
-        canvas.scale(layer.transform.scale, layer.transform.scale)
-        canvas.rotate(layer.transform.rotation)
+        if (bounds != null) {
+            val rect = RectF(
+                (layer.transform.offsetX + bounds.minX) * scaleX,
+                (layer.transform.offsetY + bounds.minY) * scaleY,
+                (layer.transform.offsetX + bounds.maxX) * scaleX,
+                (layer.transform.offsetY + bounds.maxY) * scaleY
+            )
+            canvas.translate(rect.centerX(), rect.centerY())
+            canvas.rotate(layer.transform.rotation)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.translate(-rect.width() / 2f, -rect.height() / 2f)
+            canvas.translate(-bounds.minX * scaleX, -bounds.minY * scaleY)
+        } else {
+            canvas.translate(layer.transform.offsetX * scaleX, layer.transform.offsetY * scaleY)
+            canvas.rotate(layer.transform.rotation)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+        }
         val rendered = when (val data = layer.drawData) {
             is DrawLayerData.FreeStroke -> {
-                drawStroke(canvas, data.stroke, scaleX, scaleY, parseColor(data.stroke.colorHex, Color.rgb(29, 23, 38)))
+                drawStroke(canvas, data.stroke, scaleX, scaleY, parseColor(data.stroke.colorHex, Color.rgb(29, 23, 38)), clear = false)
                 data.stroke.points.size >= 2
             }
 
             is DrawLayerData.EraseStroke -> {
-                drawStroke(canvas, data.stroke, scaleX, scaleY, Color.WHITE)
+                drawStroke(canvas, data.stroke, scaleX, scaleY, Color.WHITE, clear = false)
                 data.stroke.points.size >= 2
             }
 
+            is DrawLayerData.BrushStack -> false
             is DrawLayerData.TextTrail -> drawTextTrail(canvas, data, scaleX, scaleY)
             is DrawLayerData.StickerTrail -> drawStickerTrail(canvas, data, assets, frameIndex, scaleX, scaleY)
         }
@@ -392,7 +472,8 @@ class AndroidDesignVideoExporter @Inject constructor(
         stroke: BrushStroke,
         scaleX: Float,
         scaleY: Float,
-        color: Int
+        color: Int,
+        clear: Boolean
     ) {
         if (stroke.points.size < 2) return
         val path = Path()
@@ -407,6 +488,9 @@ class AndroidDesignVideoExporter @Inject constructor(
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             strokeWidth = stroke.strokeWidth * ((scaleX + scaleY) / 2f)
+            if (clear) {
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            }
         }
         canvas.drawPath(path, paint)
     }
@@ -621,6 +705,21 @@ class AndroidDesignVideoExporter @Inject constructor(
     }
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
+
+    private fun DrawLayerData.isBrushStackRenderable(): Boolean {
+        return this is DrawLayerData.FreeStroke ||
+            this is DrawLayerData.EraseStroke ||
+            this is DrawLayerData.BrushStack
+    }
+
+    private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -> Unit) {
+        when (this) {
+            is DrawLayerData.FreeStroke -> block(BrushStackItem.Draw(stroke))
+            is DrawLayerData.EraseStroke -> block(BrushStackItem.Erase(stroke))
+            is DrawLayerData.BrushStack -> items.forEach(block)
+            else -> Unit
+        }
+    }
 
     private fun resolveVideoOutputSize(project: EditorProject): VideoOutputSize {
         val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

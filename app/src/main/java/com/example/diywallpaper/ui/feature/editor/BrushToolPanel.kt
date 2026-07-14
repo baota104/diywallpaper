@@ -21,12 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,13 +34,14 @@ import com.example.diywallpaper.ui.theme.PrimarySoft
 
 @Composable
 fun BrushToolPanel(
+    config: BrushToolConfig,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
-    modifier: Modifier = Modifier,
-    initialErase: Boolean = false
+    modifier: Modifier = Modifier
 ) {
-    var brushSize by remember { mutableFloatStateOf(28f) }
-    var selectedColorIndex by remember { mutableIntStateOf(1) }
-    var isEraseMode by remember(initialErase) { mutableStateOf(initialErase) }
+    val selectedColorIndex = brushColors.indexOfFirst { it.hex.equals(config.colorHex, ignoreCase = true) }
+        .takeIf { it >= 0 }
+        ?: 1
 
     Column(
         modifier = modifier
@@ -75,7 +70,13 @@ fun BrushToolPanel(
                             color = if (index == selectedColorIndex) Primary else Color.Transparent,
                             shape = CircleShape
                         )
-                        .clickable { selectedColorIndex = index }
+                        .clickable {
+                            onBrushConfigChanged(
+                                config.erase,
+                                color.hex,
+                                config.brushSize
+                            )
+                        }
                 )
             }
         }
@@ -83,21 +84,39 @@ fun BrushToolPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BrushModeChip(
                 text = stringResource(id = R.string.editor_panel_draw),
-                selected = !isEraseMode,
-                onClick = { isEraseMode = false }
+                selected = !config.erase,
+                onClick = {
+                    onBrushConfigChanged(
+                        false,
+                        config.colorHex,
+                        config.brushSize
+                    )
+                }
             )
             BrushModeChip(
                 text = stringResource(id = R.string.editor_panel_erase),
-                selected = isEraseMode,
-                onClick = { isEraseMode = true }
+                selected = config.erase,
+                onClick = {
+                    onBrushConfigChanged(
+                        true,
+                        config.colorHex,
+                        config.brushSize
+                    )
+                }
             )
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ToolSectionLabel(text = stringResource(id = R.string.editor_panel_brush_size))
             Slider(
-                value = brushSize,
-                onValueChange = { brushSize = it },
+                value = config.brushSize,
+                onValueChange = {
+                    onBrushConfigChanged(
+                        config.erase,
+                        config.colorHex,
+                        it
+                    )
+                },
                 valueRange = 6f..48f
             )
         }
@@ -115,10 +134,10 @@ fun BrushToolPanel(
                             shape = RoundedCornerShape(12.dp)
                         )
                         .clickable {
-                            onApplyBrush(
-                                isEraseMode,
-                                brushColors[selectedColorIndex].hex,
-                                brushSize
+                            onBrushConfigChanged(
+                                config.erase,
+                                config.colorHex,
+                                config.brushSize
                             )
                         },
                     contentAlignment = Alignment.Center
@@ -178,6 +197,12 @@ private val brushStamps = listOf("~", "w", "[]", "_", "*")
 private fun BrushToolPanelPreview() {
     DIYWallpaperTheme(dynamicColor = false) {
         BrushToolPanel(
+            config = BrushToolConfig(
+                erase = false,
+                colorHex = "#1C1527",
+                brushSize = 28f
+            ),
+            onBrushConfigChanged = { _, _, _ -> },
             onApplyBrush = { _, _, _ -> },
             modifier = Modifier
                 .fillMaxWidth()

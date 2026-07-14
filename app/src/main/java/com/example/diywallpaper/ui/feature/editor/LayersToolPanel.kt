@@ -393,6 +393,30 @@ private fun DrawLayerThumbnail(layer: DrawLayer) {
             erase = true
         )
 
+        is DrawLayerData.BrushStack -> {
+            val firstDraw = drawData.items
+                .filterIsInstance<com.example.diywallpaper.domain.model.design.BrushStackItem.Draw>()
+                .firstOrNull()
+            val firstErase = drawData.items
+                .filterIsInstance<com.example.diywallpaper.domain.model.design.BrushStackItem.Erase>()
+                .firstOrNull()
+            when {
+                firstDraw != null -> StrokeThumbnail(
+                    points = firstDraw.stroke.points,
+                    color = parseColorHex(firstDraw.stroke.colorHex ?: "#1C1527", Primary),
+                    strokeWidth = firstDraw.stroke.strokeWidth,
+                    erase = false
+                )
+
+                firstErase != null -> StrokeThumbnail(
+                    points = firstErase.stroke.points,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    strokeWidth = firstErase.stroke.strokeWidth,
+                    erase = true
+                )
+            }
+        }
+
         is DrawLayerData.TextTrail -> TextTrailThumbnail(drawData)
 
         is DrawLayerData.StickerTrail -> AsyncImage(

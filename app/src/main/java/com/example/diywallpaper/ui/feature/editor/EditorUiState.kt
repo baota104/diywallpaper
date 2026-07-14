@@ -21,6 +21,7 @@ data class EditorUiState(
     val layers: List<EditorLayer> = emptyList(),
     val placeholders: List<PhotoPlaceholderLayer> = emptyList(),
     val selectedLayerId: String? = null,
+    val activeBrushSessionLayerId: String? = null,
     val activeTool: EditorTool = EditorTool.PREVIEW,
     val openedToolSheet: EditorTool? = null,
     val activeBrushConfig: BrushToolConfig? = null,

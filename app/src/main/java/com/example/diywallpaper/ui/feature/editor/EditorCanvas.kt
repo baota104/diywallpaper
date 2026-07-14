@@ -34,14 +34,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,9 +61,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.BrushStroke
+import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.DESIGN_RENDER_LAYER_SIDE
 import com.example.diywallpaper.domain.model.design.DrawLayer
@@ -76,6 +81,7 @@ import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
 import com.example.diywallpaper.ui.theme.PlusJakartaSans
 import kotlin.math.atan2
@@ -114,8 +120,10 @@ fun EditorCanvas(
             modifier = Modifier
                 .fillMaxWidth(0.86f)
                 .aspectRatio(aspectRatio)
-                .clip(RoundedCornerShape(34.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                .background(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(34.dp)
+                )
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
@@ -135,7 +143,35 @@ fun EditorCanvas(
             val drawEnabled = uiState.activeTool == EditorTool.BRUSH_DRAW ||
                 uiState.activeTool == EditorTool.BRUSH_ERASE ||
                 uiState.activeTool == EditorTool.TEXT_BRUSH
+            val activeBrushStroke = activePoints.takeIf {
+                it.isNotEmpty() &&
+                    (uiState.activeTool == EditorTool.BRUSH_DRAW || uiState.activeTool == EditorTool.BRUSH_ERASE)
+            }?.let { points ->
+                val config = uiState.activeBrushConfig
+                if (config != null) {
+                    DrawLayerData.FreeStroke(
+                        BrushStroke(
+                            points = points,
+                            colorHex = config.colorHex,
+                            strokeWidth = config.brushSize
+                        )
+                    ).takeUnless { config.erase }
+                        ?: DrawLayerData.EraseStroke(
+                            BrushStroke(
+                                points = points,
+                                strokeWidth = config.brushSize
+                            )
+                        )
+                } else {
+                    null
+                }
+            }
 
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(34.dp))
+            ) {
             EditorCanvasBackground(
                 background = uiState.background,
                 modifier = Modifier.fillMaxSize()
@@ -182,20 +218,48 @@ fun EditorCanvas(
                             previewTransform = previewTransforms[layer.id]
                         )
 
-                        is DrawLayer -> DrawLayerItem(
-                            layer = layer,
-                            scaleX = scaleX,
-                            scaleY = scaleY,
-                            canvasWidthPx = canvasWidthPx,
-                            canvasHeightPx = canvasHeightPx,
-                            eraseColor = eraseColor,
-                            isSelected = uiState.selectedLayerId == layer.id,
-                            previewTransform = previewTransforms[layer.id]
-                        )
+                        is DrawLayer -> {
+                            if (layer.drawData.isBrushStackRenderable()) {
+                                BrushStrokeStackCanvas(
+                                    layers = listOf(
+                                        layer.copy(transform = previewTransforms[layer.id] ?: layer.transform)
+                                    ),
+                                    activeStroke = activeBrushStroke
+                                        .takeIf { layer.id == uiState.activeBrushSessionLayerId },
+                                    scaleX = scaleX,
+                                    scaleY = scaleY,
+                                    canvasWidthPx = canvasWidthPx,
+                                    canvasHeightPx = canvasHeightPx,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                DrawLayerItem(
+                                    layer = layer,
+                                    scaleX = scaleX,
+                                    scaleY = scaleY,
+                                    canvasWidthPx = canvasWidthPx,
+                                    canvasHeightPx = canvasHeightPx,
+                                    eraseColor = eraseColor,
+                                    isSelected = uiState.selectedLayerId == layer.id,
+                                    previewTransform = previewTransforms[layer.id]
+                                )
+                            }
+                        }
                     }
                 }
 
-            if (activePoints.isNotEmpty()) {
+            BrushStrokeStackCanvas(
+                layers = emptyList(),
+                activeStroke = activeBrushStroke
+                    .takeIf { uiState.activeBrushSessionLayerId == null && uiState.activeTool == EditorTool.BRUSH_DRAW },
+                scaleX = scaleX,
+                scaleY = scaleY,
+                canvasWidthPx = canvasWidthPx,
+                canvasHeightPx = canvasHeightPx,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            if (activePoints.isNotEmpty() && uiState.activeTool == EditorTool.TEXT_BRUSH) {
                 ActiveStrokePreview(
                     points = activePoints,
                     scaleX = scaleX,
@@ -299,6 +363,7 @@ fun EditorCanvas(
 
             if (uiState.layers.isEmpty() && uiState.placeholders.isEmpty() && activePoints.isEmpty()) {
                 EmptyCanvasHint(modifier = Modifier.align(Alignment.Center))
+            }
             }
         }
     }
@@ -432,7 +497,10 @@ private fun TextLayerItem(
         width = (measuredTextSize.width / scaleX).roundToInt().coerceAtLeast(1),
         height = (measuredTextSize.height / scaleY).roundToInt().coerceAtLeast(1)
     )
-    val bounds = layer.rawBounds(measuredModelTextSize)
+    val bounds = layer.renderBounds(
+        measuredWidth = measuredModelTextSize.width.toFloat(),
+        measuredHeight = measuredModelTextSize.height.toFloat()
+    )
 
     Box(
         modifier = Modifier
@@ -580,6 +648,139 @@ private fun ImageLayerItem(
 }
 
 @Composable
+private fun BrushStrokeStackCanvas(
+    layers: List<DrawLayer>,
+    activeStroke: DrawLayerData?,
+    scaleX: Float,
+    scaleY: Float,
+    canvasWidthPx: Float,
+    canvasHeightPx: Float,
+    modifier: Modifier = Modifier
+) {
+    if (layers.isEmpty() && activeStroke == null) return
+    Box(modifier = modifier) {
+        layers.forEach { layer ->
+            val renderTransform = layer.transform
+            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            Canvas(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = ((bounds.minX + renderTransform.offsetX) * scaleX).roundToInt(),
+                            y = ((bounds.minY + renderTransform.offsetY) * scaleY).roundToInt()
+                        )
+                    }
+                    .size(
+                        width = pxToDp(bounds.width * scaleX),
+                        height = pxToDp(bounds.height * scaleY)
+                    )
+                    .graphicsLayer(
+                        rotationZ = renderTransform.rotation,
+                        scaleX = renderTransform.scale,
+                        scaleY = renderTransform.scale,
+                        alpha = renderTransform.alpha
+                    )
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+            ) {
+                val data = layer.drawData
+                if (data.isBrushStackRenderable()) {
+                    withTransform({
+                        translate(left = -bounds.minX * scaleX, top = -bounds.minY * scaleY)
+                    }) {
+                    data.forEachBrushStackItem { item ->
+                        drawBrushStackStroke(
+                            item = item,
+                            scaleX = scaleX,
+                            scaleY = scaleY,
+                            canvasWidthPx = canvasWidthPx,
+                            canvasHeightPx = canvasHeightPx
+                        )
+                    }
+                    activeStroke?.forEachBrushStackItem { item ->
+                        drawBrushStackStroke(
+                            item = item,
+                            scaleX = scaleX,
+                            scaleY = scaleY,
+                            canvasWidthPx = canvasWidthPx,
+                            canvasHeightPx = canvasHeightPx
+                        )
+                    }
+                    }
+                }
+            }
+        }
+        if (activeStroke != null && layers.isEmpty()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+            ) {
+                activeStroke.forEachBrushStackItem { item ->
+                    drawBrushStackStroke(
+                        item = item,
+                        scaleX = scaleX,
+                        scaleY = scaleY,
+                        canvasWidthPx = canvasWidthPx,
+                        canvasHeightPx = canvasHeightPx
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBrushStackStroke(
+    item: BrushStackItem,
+    scaleX: Float,
+    scaleY: Float,
+    canvasWidthPx: Float,
+    canvasHeightPx: Float
+) {
+    val stroke = when (item) {
+        is BrushStackItem.Draw -> item.stroke
+        is BrushStackItem.Erase -> item.stroke
+    }
+    if (stroke.points.size < 2) return
+    val path = Path().apply {
+        moveTo(stroke.points.first().x * scaleX, stroke.points.first().y * scaleY)
+        stroke.points.drop(1).forEach { point ->
+            lineTo(point.x * scaleX, point.y * scaleY)
+        }
+    }
+    val brush = when (val style = stroke.brushStyle) {
+        is BrushStyleSpec.Gradient -> Brush.linearGradient(
+            colors = style.colors.map { parseColorHex(it, Color.Black) },
+            start = Offset.Zero,
+            end = Offset(canvasWidthPx, canvasHeightPx)
+        )
+
+        is BrushStyleSpec.Solid -> Brush.linearGradient(
+            listOf(parseColorHex(style.colorHex, Color.Black), parseColorHex(style.colorHex, Color.Black))
+        )
+
+        null -> {
+            val color = parseColorHex(stroke.colorHex ?: "#1C1527", Color.Black)
+            Brush.linearGradient(listOf(color, color))
+        }
+    }
+    drawPath(
+        path = path,
+        brush = brush,
+        style = Stroke(
+            width = stroke.strokeWidth * ((scaleX + scaleY) / 2f),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        ),
+        alpha = 1f,
+        blendMode = if (item is BrushStackItem.Erase) BlendMode.Clear else BlendMode.SrcOver
+    )
+}
+
+@Composable
 private fun DrawLayerItem(
     layer: DrawLayer,
     scaleX: Float,
@@ -591,29 +792,40 @@ private fun DrawLayerItem(
     previewTransform: LayerTransform?
 ) {
     val renderTransform = previewTransform ?: layer.transform
+    val bounds = layer.drawData.renderBounds() ?: return
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                translationX = renderTransform.offsetX * scaleX
-                translationY = renderTransform.offsetY * scaleY
-                rotationZ = renderTransform.rotation
-                this.scaleX = renderTransform.scale
-                this.scaleY = renderTransform.scale
-                alpha = renderTransform.alpha
-                transformOrigin = TransformOrigin(0f, 0f)
+            .offset {
+                IntOffset(
+                    x = ((bounds.minX + renderTransform.offsetX) * scaleX).roundToInt(),
+                    y = ((bounds.minY + renderTransform.offsetY) * scaleY).roundToInt()
+                )
             }
+            .size(
+                width = pxToDp(bounds.width * scaleX),
+                height = pxToDp(bounds.height * scaleY)
+            )
+            .graphicsLayer(
+                rotationZ = renderTransform.rotation,
+                scaleX = renderTransform.scale,
+                scaleY = renderTransform.scale,
+                alpha = renderTransform.alpha
+            )
     ) {
         when (val drawData = layer.drawData) {
-            is DrawLayerData.FreeStroke -> StrokeCanvas(
-                stroke = drawData.stroke,
-                scaleX = scaleX,
-                scaleY = scaleY,
-                canvasWidthPx = canvasWidthPx,
-                canvasHeightPx = canvasHeightPx,
-                eraseColor = eraseColor,
-                erase = false
-            )
+            is DrawLayerData.FreeStroke -> Canvas(modifier = Modifier.fillMaxSize()) {
+                withTransform({
+                    translate(left = -bounds.minX * scaleX, top = -bounds.minY * scaleY)
+                }) {
+                    drawBrushStackStroke(
+                        item = BrushStackItem.Draw(drawData.stroke),
+                        scaleX = scaleX,
+                        scaleY = scaleY,
+                        canvasWidthPx = canvasWidthPx,
+                        canvasHeightPx = canvasHeightPx
+                    )
+                }
+            }
 
             is DrawLayerData.EraseStroke -> StrokeCanvas(
                 stroke = drawData.stroke,
@@ -625,16 +837,22 @@ private fun DrawLayerItem(
                 erase = true
             )
 
+            is DrawLayerData.BrushStack -> Unit
+
             is DrawLayerData.TextTrail -> TextTrailContent(
                 drawData = drawData,
                 scaleX = scaleX,
-                scaleY = scaleY
+                scaleY = scaleY,
+                originX = bounds.minX,
+                originY = bounds.minY
             )
 
             is DrawLayerData.StickerTrail -> StickerTrailContent(
                 drawData = drawData,
                 scaleX = scaleX,
-                scaleY = scaleY
+                scaleY = scaleY,
+                originX = bounds.minX,
+                originY = bounds.minY
             )
         }
     }
@@ -644,8 +862,13 @@ private fun DrawLayerItem(
 private fun TextTrailContent(
     drawData: DrawLayerData.TextTrail,
     scaleX: Float,
-    scaleY: Float
+    scaleY: Float,
+    originX: Float = 0f,
+    originY: Float = 0f
 ) {
+    val scaledFontSize = with(LocalDensity.current) {
+        (drawData.textStyle.fontSizeSp * ((scaleX + scaleY) / 2f)).toSp()
+    }
     drawData.points.forEachIndexed { index, point ->
         if (index % 2 == 0) {
             Text(
@@ -653,12 +876,12 @@ private fun TextTrailContent(
                 style = MaterialTheme.typography.labelMedium.copy(
                     color = resolveTextBrushColor(drawData.textStyle.textBrush, drawData.textStyle.textColorHex),
                     fontFamily = resolveFontFamily(drawData.textStyle.fontFamilyId),
-                    fontSize = drawData.textStyle.fontSizeSp.sp
+                    fontSize = scaledFontSize
                 ),
                 modifier = Modifier.offset {
                     IntOffset(
-                        x = (point.x * scaleX).roundToInt(),
-                        y = (point.y * scaleY).roundToInt()
+                        x = ((point.x - originX) * scaleX).roundToInt(),
+                        y = ((point.y - originY) * scaleY).roundToInt()
                     )
                 }
             )
@@ -670,7 +893,9 @@ private fun TextTrailContent(
 private fun StickerTrailContent(
     drawData: DrawLayerData.StickerTrail,
     scaleX: Float,
-    scaleY: Float
+    scaleY: Float,
+    originX: Float = 0f,
+    originY: Float = 0f
 ) {
     drawData.points.forEachIndexed { index, point ->
         if (index % 2 == 0) {
@@ -680,8 +905,8 @@ private fun StickerTrailContent(
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            x = (point.x * scaleX).roundToInt(),
-                            y = (point.y * scaleY).roundToInt()
+                            x = ((point.x - originX) * scaleX).roundToInt(),
+                            y = ((point.y - originY) * scaleY).roundToInt()
                         )
                     }
                     .size(pxToDp(drawData.stampSize * scaleX))
@@ -870,28 +1095,40 @@ private fun SelectionOverlay(
     onCommitTransform: (LayerTransform) -> Unit,
     onCancelTransform: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .offset { IntOffset(frame.x.roundToInt(), frame.y.roundToInt()) }
-            .size(pxToDp(frame.width), pxToDp(frame.height))
-            .graphicsLayer(
-                rotationZ = frame.rotation,
-                scaleX = frame.visualScale,
-                scaleY = frame.visualScale
-            )
-            .border(2.dp, Color.Black, RoundedCornerShape(10.dp))
-    ) {
+    val corners = frame.visualCorners()
+    val handleSize = 32.dp
+    val density = LocalDensity.current
+    val handleHalfPx = with(density) { handleSize.toPx() / 2f }
+    val borderWidthPx = with(density) { 2.dp.toPx() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawLine(Color.Black, corners.topLeft, corners.topRight, strokeWidth = borderWidthPx)
+            drawLine(Color.Black, corners.topRight, corners.bottomRight, strokeWidth = borderWidthPx)
+            drawLine(Color.Black, corners.bottomRight, corners.bottomLeft, strokeWidth = borderWidthPx)
+            drawLine(Color.Black, corners.bottomLeft, corners.topLeft, strokeWidth = borderWidthPx)
+        }
         OverlayHandle(
             icon = Icons.Outlined.Close,
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = (-12).dp, y = (-12).dp),
+                .offset {
+                    IntOffset(
+                        x = (corners.topLeft.x - handleHalfPx).roundToInt(),
+                        y = (corners.topLeft.y - handleHalfPx).roundToInt()
+                    )
+                }
+                .zIndex(2f),
             onClick = onRemove
         )
         ResizeHandle(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 12.dp, y = 12.dp)
+                .offset {
+                    IntOffset(
+                        x = (corners.bottomRight.x - handleHalfPx).roundToInt(),
+                        y = (corners.bottomRight.y - handleHalfPx).roundToInt()
+                    )
+                }
+                .zIndex(2f)
         )
     }
 }
@@ -904,7 +1141,7 @@ private fun OverlayHandle(
 ) {
     Box(
         modifier = modifier
-            .size(28.dp)
+            .size(32.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(Color.Black)
             .pointerInput(Unit) { detectTapGestures(onTap = { onClick() }) },
@@ -925,7 +1162,7 @@ private fun ResizeHandle(
 ) {
     Box(
         modifier = modifier
-            .size(30.dp)
+            .size(32.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(Color.Black),
         contentAlignment = Alignment.Center
@@ -986,16 +1223,6 @@ private fun StrokeCanvas(
     }
 }
 
-private data class RawBounds(
-    val minX: Float,
-    val minY: Float,
-    val maxX: Float,
-    val maxY: Float
-) {
-    val width: Float get() = (maxX - minX).coerceAtLeast(1f)
-    val height: Float get() = (maxY - minY).coerceAtLeast(1f)
-}
-
 private data class LayerFrameSpec(
     val layerId: String,
     val x: Float,
@@ -1012,6 +1239,26 @@ private data class LayerFrameSpec(
     val visualScale: Float get() = if (scaleAppliedToFrame) 1f else transform.scale
 }
 
+private data class FrameCorners(
+    val topLeft: Offset,
+    val topRight: Offset,
+    val bottomRight: Offset,
+    val bottomLeft: Offset
+)
+
+private fun LayerFrameSpec.visualCorners(): FrameCorners {
+    val visualWidth = width * visualScale
+    val visualHeight = height * visualScale
+    val visualLeft = center.x - visualWidth / 2f
+    val visualTop = center.y - visualHeight / 2f
+    return FrameCorners(
+        topLeft = Offset(visualLeft, visualTop).rotateAround(center, rotation),
+        topRight = Offset(visualLeft + visualWidth, visualTop).rotateAround(center, rotation),
+        bottomRight = Offset(visualLeft + visualWidth, visualTop + visualHeight).rotateAround(center, rotation),
+        bottomLeft = Offset(visualLeft, visualTop + visualHeight).rotateAround(center, rotation)
+    )
+}
+
 private fun EditorLayer.toFrameSpec(
     scaleX: Float,
     scaleY: Float,
@@ -1025,7 +1272,10 @@ private fun EditorLayer.toFrameSpec(
                     height = (size.height / scaleY).roundToInt().coerceAtLeast(1)
                 )
             }
-            val bounds = rawBounds(measuredModelSize)
+            val bounds = renderBounds(
+                measuredWidth = measuredModelSize?.width?.toFloat(),
+                measuredHeight = measuredModelSize?.height?.toFloat()
+            )
             rawFrame(
                 layerId = id,
                 x = (transform.offsetX + bounds.minX) * scaleX,
@@ -1072,11 +1322,11 @@ private fun EditorLayer.toFrameSpec(
         }
 
         is DrawLayer -> {
-            val bounds = drawData.rawBounds() ?: return null
+            val bounds = drawData.renderBounds() ?: return null
             rawFrame(
                 layerId = id,
-                x = (bounds.minX + transform.offsetX) * scaleX,
-                y = (bounds.minY + transform.offsetY) * scaleY,
+                x = (transform.offsetX + bounds.minX) * scaleX,
+                y = (transform.offsetY + bounds.minY) * scaleY,
                 width = bounds.width * scaleX,
                 height = bounds.height * scaleY,
                 rotation = transform.rotation,
@@ -1144,115 +1394,18 @@ private fun scaledFrame(
     )
 }
 
-private fun DrawLayerData.rawBounds(): RawBounds? {
-    return when (this) {
-        is DrawLayerData.FreeStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
-        is DrawLayerData.EraseStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
-        is DrawLayerData.StickerTrail -> {
-            if (points.isEmpty()) return null
-            val padding = stampSize * 0.25f
-            RawBounds(
-                minX = points.minOf { it.x } - padding,
-                minY = points.minOf { it.y } - padding,
-                maxX = points.maxOf { it.x + stampSize } + padding,
-                maxY = points.maxOf { it.y + stampSize } + padding
-            )
-        }
-
-        is DrawLayerData.TextTrail -> {
-            if (points.isEmpty()) return null
-            val fontSize = textStyle.fontSizeSp.coerceAtLeast(1f)
-            val textWidth = estimateTextWidth(text, fontSize)
-            val textHeight = fontSize * 1.75f
-            val padding = fontSize * 1.2f
-            RawBounds(
-                minX = points.minOf { it.x } - padding,
-                minY = points.minOf { it.y } - padding,
-                maxX = points.maxOf { it.x + textWidth } + padding,
-                maxY = points.maxOf { it.y + textHeight } + padding
-            )
-        }
-    }
+private fun DrawLayerData.isBrushStackRenderable(): Boolean {
+    return this is DrawLayerData.FreeStroke ||
+        this is DrawLayerData.EraseStroke ||
+        this is DrawLayerData.BrushStack
 }
 
-private fun List<StrokePoint>.strokeBounds(padding: Float): RawBounds? {
-    if (isEmpty()) return null
-    return RawBounds(
-        minX = minOf { it.x } - padding,
-        minY = minOf { it.y } - padding,
-        maxX = maxOf { it.x } + padding,
-        maxY = maxOf { it.y } + padding
-    )
-}
-
-private fun estimateTextWidth(text: String, fontSize: Float): Float {
-    return text.ifBlank { "Text" }.length.coerceAtLeast(1) * fontSize * 0.72f
-}
-
-private fun TextLayer.rawBounds(measuredSize: IntSize? = null): RawBounds {
-    val fontSize = style.fontSizeSp.coerceAtLeast(1f)
-    val metrics = textFrameMetrics(style.fontFamilyId)
-    val measuredWidthModel = measuredSize?.width?.toFloat()
-    val measuredHeightModel = measuredSize?.height?.toFloat()
-    val estimatedWidth = text.ifBlank { "Text" }
-        .lineSequence()
-        .maxOf { line ->
-            line.length.coerceAtLeast(1) * fontSize * metrics.widthFactor +
-                style.letterSpacing * line.length.coerceAtLeast(1)
-        }
-    val estimatedHeight = text.ifBlank { "Text" }
-        .lineSequence()
-        .count()
-        .coerceAtLeast(1) * (style.lineHeight ?: (fontSize * metrics.heightFactor))
-    val contentWidth = maxOf(measuredWidthModel ?: 0f, estimatedWidth).coerceAtLeast(fontSize)
-    val contentHeight = maxOf(measuredHeightModel ?: 0f, estimatedHeight).coerceAtLeast(fontSize)
-    val horizontalPadding = (fontSize * metrics.horizontalPaddingFactor).coerceAtLeast(32f)
-    val verticalPadding = (fontSize * metrics.verticalPaddingFactor).coerceAtLeast(28f)
-    return RawBounds(
-        minX = -horizontalPadding,
-        minY = -verticalPadding,
-        maxX = contentWidth + horizontalPadding,
-        maxY = contentHeight + verticalPadding
-    )
-}
-
-private data class TextFrameMetrics(
-    val widthFactor: Float,
-    val heightFactor: Float,
-    val horizontalPaddingFactor: Float,
-    val verticalPaddingFactor: Float
-)
-
-private fun textFrameMetrics(fontFamilyId: String): TextFrameMetrics {
-    return when (fontFamilyId) {
-        "allura",
-        "arizonia",
-        "dawning_of_a_new_day",
-        "licorice",
-        "lieckerli_one",
-        "meow_script",
-        "sansita_swashed" -> TextFrameMetrics(
-            widthFactor = 0.94f,
-            heightFactor = 1.9f,
-            horizontalPaddingFactor = 2.4f,
-            verticalPaddingFactor = 1.8f
-        )
-
-        "are_you_serious",
-        "londrina_shadow",
-        "ma_shan_zheng" -> TextFrameMetrics(
-            widthFactor = 0.82f,
-            heightFactor = 1.7f,
-            horizontalPaddingFactor = 1.7f,
-            verticalPaddingFactor = 1.5f
-        )
-
-        else -> TextFrameMetrics(
-            widthFactor = 0.72f,
-            heightFactor = 1.6f,
-            horizontalPaddingFactor = 1.25f,
-            verticalPaddingFactor = 1.15f
-        )
+private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -> Unit) {
+    when (this) {
+        is DrawLayerData.FreeStroke -> block(BrushStackItem.Draw(stroke))
+        is DrawLayerData.EraseStroke -> block(BrushStackItem.Erase(stroke))
+        is DrawLayerData.BrushStack -> items.forEach(block)
+        else -> Unit
     }
 }
 

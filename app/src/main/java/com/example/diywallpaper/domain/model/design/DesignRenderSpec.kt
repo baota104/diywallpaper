@@ -12,6 +12,16 @@ data class DesignRenderSize(
     val height: Float
 )
 
+data class DesignRawBounds(
+    val minX: Float,
+    val minY: Float,
+    val maxX: Float,
+    val maxY: Float
+) {
+    val width: Float get() = (maxX - minX).coerceAtLeast(1f)
+    val height: Float get() = (maxY - minY).coerceAtLeast(1f)
+}
+
 enum class DesignViewportScaleMode {
     Contain,
     Cover
@@ -99,4 +109,126 @@ fun photoRenderSize(ratio: CropPresetRatio?): DesignRenderSize {
             height = DESIGN_RENDER_LAYER_SIDE
         )
     }
+}
+
+fun DrawLayerData.renderBounds(): DesignRawBounds? {
+    return when (this) {
+        is DrawLayerData.FreeStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
+        is DrawLayerData.EraseStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
+        is DrawLayerData.BrushStack -> items
+            .mapNotNull { item ->
+                when (item) {
+                    is BrushStackItem.Draw -> item.stroke.points.strokeBounds(item.stroke.strokeWidth * 2.8f)
+                    is BrushStackItem.Erase -> null
+                }
+            }
+            .reduceOrNull { acc, bounds ->
+                DesignRawBounds(
+                    minX = min(acc.minX, bounds.minX),
+                    minY = min(acc.minY, bounds.minY),
+                    maxX = max(acc.maxX, bounds.maxX),
+                    maxY = max(acc.maxY, bounds.maxY)
+                )
+            }
+
+        is DrawLayerData.StickerTrail -> {
+            if (points.isEmpty()) return null
+            val padding = stampSize * 0.25f
+            DesignRawBounds(
+                minX = points.minOf { it.x } - padding,
+                minY = points.minOf { it.y } - padding,
+                maxX = points.maxOf { it.x + stampSize } + padding,
+                maxY = points.maxOf { it.y + stampSize } + padding
+            )
+        }
+
+        is DrawLayerData.TextTrail -> {
+            if (points.isEmpty()) return null
+            val fontSize = textStyle.fontSizeSp.coerceAtLeast(1f)
+            val textWidth = estimateRenderTextWidth(text, fontSize)
+            val textHeight = fontSize * 1.75f
+            val padding = fontSize * 1.2f
+            DesignRawBounds(
+                minX = points.minOf { it.x } - padding,
+                minY = points.minOf { it.y } - padding,
+                maxX = points.maxOf { it.x + textWidth } + padding,
+                maxY = points.maxOf { it.y + textHeight } + padding
+            )
+        }
+    }
+}
+
+fun TextLayer.renderBounds(
+    measuredWidth: Float? = null,
+    measuredHeight: Float? = null
+): DesignRawBounds {
+    val fontSize = style.fontSizeSp.coerceAtLeast(1f)
+    val metrics = textFrameMetrics(style.fontFamilyId)
+    val estimatedWidth = text.ifBlank { "Text" }
+        .lineSequence()
+        .maxOf { line ->
+            line.length.coerceAtLeast(1) * fontSize * metrics.widthFactor +
+                style.letterSpacing * line.length.coerceAtLeast(1)
+        }
+    val estimatedHeight = text.ifBlank { "Text" }
+        .lineSequence()
+        .count()
+        .coerceAtLeast(1) * (style.lineHeight ?: (fontSize * metrics.heightFactor))
+    val contentWidth = max(measuredWidth ?: 0f, estimatedWidth).coerceAtLeast(fontSize)
+    val contentHeight = max(measuredHeight ?: 0f, estimatedHeight).coerceAtLeast(fontSize)
+    val horizontalPadding = (fontSize * metrics.horizontalPaddingFactor).coerceAtLeast(32f)
+    val verticalPadding = (fontSize * metrics.verticalPaddingFactor).coerceAtLeast(28f)
+    return DesignRawBounds(
+        minX = -horizontalPadding,
+        minY = -verticalPadding,
+        maxX = contentWidth + horizontalPadding,
+        maxY = contentHeight + verticalPadding
+    )
+}
+
+private data class TextFrameMetrics(
+    val widthFactor: Float,
+    val heightFactor: Float,
+    val horizontalPaddingFactor: Float,
+    val verticalPaddingFactor: Float
+)
+
+private fun textFrameMetrics(fontFamilyId: String): TextFrameMetrics {
+    val id = fontFamilyId.lowercase()
+    return when {
+        "script" in id || "dancing" in id || "pacifico" in id || "play" in id -> TextFrameMetrics(
+            widthFactor = 0.9f,
+            heightFactor = 1.9f,
+            horizontalPaddingFactor = 1.85f,
+            verticalPaddingFactor = 1.45f
+        )
+
+        "bold" in id || "round" in id -> TextFrameMetrics(
+            widthFactor = 0.78f,
+            heightFactor = 1.7f,
+            horizontalPaddingFactor = 1.35f,
+            verticalPaddingFactor = 1.2f
+        )
+
+        else -> TextFrameMetrics(
+            widthFactor = 0.72f,
+            heightFactor = 1.6f,
+            horizontalPaddingFactor = 1.25f,
+            verticalPaddingFactor = 1.15f
+        )
+    }
+}
+
+private fun List<StrokePoint>.strokeBounds(padding: Float): DesignRawBounds? {
+    if (isEmpty()) return null
+    return DesignRawBounds(
+        minX = minOf { it.x } - padding,
+        minY = minOf { it.y } - padding,
+        maxX = maxOf { it.x } + padding,
+        maxY = maxOf { it.y } + padding
+    )
+}
+
+private fun estimateRenderTextWidth(text: String, fontSize: Float): Float {
+    return text.ifBlank { "Text" }.length.coerceAtLeast(1) * fontSize * 0.72f
 }

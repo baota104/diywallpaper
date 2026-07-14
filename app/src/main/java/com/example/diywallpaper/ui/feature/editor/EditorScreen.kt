@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -73,7 +74,9 @@ fun EditorScreen(
     onApplyTextPreset: (EditorTextPreset) -> Unit,
     onAddSticker: (com.example.diywallpaper.domain.model.StickerItem) -> Unit,
     onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
+    onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selectedTextLayer = uiState.layers
@@ -82,6 +85,12 @@ fun EditorScreen(
         skipPartiallyExpanded = true
     )
     val previewProject = uiState.toPreviewProject()
+    val openedToolSheet = uiState.openedToolSheet
+    val inlineToolSheet = openedToolSheet?.takeIf {
+        it == EditorTool.BRUSH_DRAW ||
+            it == EditorTool.BRUSH_ERASE ||
+            it == EditorTool.TEXT_BRUSH
+    }
 
     if (uiState.isPreviewMode && previewProject != null) {
         Box(
@@ -151,7 +160,8 @@ fun EditorScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .padding(bottom = if (inlineToolSheet != null) 236.dp else 0.dp),
                 contentAlignment = Alignment.Center
             ) {
                 EditorCanvas(
@@ -179,10 +189,40 @@ fun EditorScreen(
 
             }
         }
+
+        if (inlineToolSheet != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                InlineEditorToolPanel(
+                    selectedTool = inlineToolSheet,
+                    uiState = uiState,
+                    selectedTextLayer = selectedTextLayer,
+                    onApplySolidBackground = onApplySolidBackground,
+                    onApplyGradientBackground = onApplyGradientBackground,
+                    onApplyImageBackground = onApplyImageBackground,
+                    onImportBackground = onImportBackground,
+                    onAddText = onAddText,
+                    onUpdateText = onUpdateText,
+                    onApplyTextPreset = onApplyTextPreset,
+                    onAddSticker = onAddSticker,
+                    onAddTextBrush = onAddTextBrush,
+                    onTextBrushConfigChanged = onTextBrushConfigChanged,
+                    onApplyBrush = onApplyBrush,
+                    onBrushConfigChanged = onBrushConfigChanged,
+                    onSelectLayer = onSelectLayer,
+                    onMoveLayer = onMoveLayer,
+                    onRemoveSelectedLayer = onRemoveSelectedLayer,
+                    onDismissToolSheet = onDismissToolSheet
+                )
+            }
+        }
     }
 
-    val openedToolSheet = uiState.openedToolSheet
-    if (openedToolSheet != null) {
+    if (openedToolSheet != null && inlineToolSheet == null) {
         ModalBottomSheet(
             onDismissRequest = onDismissToolSheet,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -205,6 +245,8 @@ fun EditorScreen(
                     availableFonts = uiState.availableFonts,
                     textPresets = uiState.textPresets,
                     selectedTextLayer = selectedTextLayer,
+                    activeBrushConfig = uiState.activeBrushConfig,
+                    activeTextBrushConfig = uiState.activeTextBrushConfig,
                     isLoadingBackgroundCatalog = uiState.isLoadingBackgroundCatalog,
                     isLoadingStickerCatalog = uiState.isLoadingStickerCatalog,
                     onApplySolidBackground = onApplySolidBackground,
@@ -216,7 +258,9 @@ fun EditorScreen(
                     onApplyPreset = onApplyTextPreset,
                     onAddSticker = onAddSticker,
                     onAddTextBrush = onAddTextBrush,
+                    onTextBrushConfigChanged = onTextBrushConfigChanged,
                     onApplyBrush = onApplyBrush,
+                    onBrushConfigChanged = onBrushConfigChanged,
                     onSelectLayer = onSelectLayer,
                     onMoveLayer = onMoveLayer,
                     onRemoveSelectedLayer = onRemoveSelectedLayer,
@@ -263,7 +307,9 @@ private fun EditorScreenPreview() {
             onApplyTextPreset = {},
             onAddSticker = {},
             onAddTextBrush = { _, _, _, _ -> },
-            onApplyBrush = { _, _, _ -> }
+            onTextBrushConfigChanged = { _, _, _, _ -> },
+            onApplyBrush = { _, _, _ -> },
+            onBrushConfigChanged = { _, _, _ -> }
         )
     }
 }
@@ -284,4 +330,77 @@ private fun EditorUiState.toPreviewProject(): EditorProject? {
         updatedAt = now,
         schemaVersion = 1
     )
+}
+
+@Composable
+private fun InlineEditorToolPanel(
+    selectedTool: EditorTool,
+    uiState: EditorUiState,
+    selectedTextLayer: TextLayer?,
+    onApplySolidBackground: (String) -> Unit,
+    onApplyGradientBackground: (List<String>) -> Unit,
+    onApplyImageBackground: (com.example.diywallpaper.domain.model.BackgroundCreateItem) -> Unit,
+    onImportBackground: () -> Unit,
+    onAddText: (text: String, fontFamilyId: String, colorHex: String) -> Unit,
+    onUpdateText: (layerId: String, text: String, fontFamilyId: String, colorHex: String) -> Unit,
+    onApplyTextPreset: (EditorTextPreset) -> Unit,
+    onAddSticker: (com.example.diywallpaper.domain.model.StickerItem) -> Unit,
+    onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
+    onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
+    onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onSelectLayer: (String?) -> Unit,
+    onMoveLayer: (layerId: String, targetIndex: Int) -> Unit,
+    onRemoveSelectedLayer: () -> Unit,
+    onDismissToolSheet: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 260.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp,
+        shadowElevation = 12.dp,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp)
+                .padding(bottom = 10.dp)
+        ) {
+            EditorToolSheet(
+                selectedTool = selectedTool,
+                background = uiState.background,
+                layers = uiState.layers,
+                selectedLayerId = uiState.selectedLayerId,
+                availableBackgrounds = uiState.availableBackgrounds,
+                availableStickers = uiState.availableStickers,
+                availableFonts = uiState.availableFonts,
+                textPresets = uiState.textPresets,
+                selectedTextLayer = selectedTextLayer,
+                activeBrushConfig = uiState.activeBrushConfig,
+                activeTextBrushConfig = uiState.activeTextBrushConfig,
+                isLoadingBackgroundCatalog = uiState.isLoadingBackgroundCatalog,
+                isLoadingStickerCatalog = uiState.isLoadingStickerCatalog,
+                onApplySolidBackground = onApplySolidBackground,
+                onApplyGradientBackground = onApplyGradientBackground,
+                onApplyImageBackground = onApplyImageBackground,
+                onImportBackground = onImportBackground,
+                onAddText = onAddText,
+                onUpdateText = onUpdateText,
+                onApplyPreset = onApplyTextPreset,
+                onAddSticker = onAddSticker,
+                onAddTextBrush = onAddTextBrush,
+                onTextBrushConfigChanged = onTextBrushConfigChanged,
+                onApplyBrush = onApplyBrush,
+                onBrushConfigChanged = onBrushConfigChanged,
+                onSelectLayer = onSelectLayer,
+                onMoveLayer = onMoveLayer,
+                onRemoveSelectedLayer = onRemoveSelectedLayer,
+                onDismissToolSheet = onDismissToolSheet,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }

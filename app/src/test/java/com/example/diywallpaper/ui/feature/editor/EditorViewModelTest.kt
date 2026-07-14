@@ -275,7 +275,8 @@ class EditorViewModelTest {
         assertTrue((viewModel.uiState.value.layers.last() as DrawLayer).drawData is DrawLayerData.FreeStroke)
 
         viewModel.addEraseStroke(points = points, strokeWidth = 20f)
-        assertTrue((viewModel.uiState.value.layers.last() as DrawLayer).drawData is DrawLayerData.EraseStroke)
+        assertEquals(1, viewModel.uiState.value.layers.filterIsInstance<DrawLayer>().size)
+        assertTrue((viewModel.uiState.value.layers.last() as DrawLayer).drawData is DrawLayerData.FreeStroke)
 
         viewModel.addStickerTrail(
             sticker = StickerItem(
@@ -322,6 +323,51 @@ class EditorViewModelTest {
         assertEquals(points, drawData.stroke.points)
         assertEquals("#FF3548", drawData.stroke.colorHex)
         assertEquals(22f, drawData.stroke.strokeWidth)
+    }
+
+    @Test
+    fun `open brush sheet keeps draw and erase in same brush stack layer`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.bindProject(sampleProject())
+        val points = listOf(StrokePoint(10f, 10f), StrokePoint(30f, 40f))
+
+        viewModel.setActiveTool(EditorTool.BRUSH_DRAW)
+        viewModel.updateBrushToolConfig(
+            erase = false,
+            colorHex = "#111111",
+            brushSize = 12f
+        )
+        viewModel.commitCanvasStroke(points)
+        viewModel.updateBrushToolConfig(
+            erase = true,
+            colorHex = "#111111",
+            brushSize = 20f
+        )
+        viewModel.commitCanvasStroke(points)
+
+        val drawLayers = viewModel.uiState.value.layers.filterIsInstance<DrawLayer>()
+        assertEquals(1, drawLayers.size)
+        val stack = drawLayers.single().drawData as DrawLayerData.BrushStack
+        assertEquals(2, stack.items.size)
+        assertTrue(stack.items[0] is com.example.diywallpaper.domain.model.design.BrushStackItem.Draw)
+        assertTrue(stack.items[1] is com.example.diywallpaper.domain.model.design.BrushStackItem.Erase)
+    }
+
+    @Test
+    fun `erase without open brush session does not create erase layer`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.bindProject(sampleProject())
+        val points = listOf(StrokePoint(10f, 10f), StrokePoint(30f, 40f))
+
+        viewModel.addEraseStroke(points = points, strokeWidth = 20f)
+
+        assertFalse(
+            viewModel.uiState.value.layers.any { layer ->
+                layer is DrawLayer && layer.drawData is DrawLayerData.EraseStroke
+            }
+        )
     }
 
     @Test

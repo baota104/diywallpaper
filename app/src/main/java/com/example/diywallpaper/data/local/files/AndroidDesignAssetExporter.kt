@@ -26,6 +26,7 @@ import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.BrushStroke
+import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.CropSpec
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
@@ -45,6 +46,7 @@ import com.example.diywallpaper.domain.model.design.TextStyleSpec
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.domain.repository.DesignAssetExporter
@@ -179,7 +181,18 @@ class AndroidDesignAssetExporter @Inject constructor(
                         is TextLayer -> drawTextLayer(canvas, layer)
                         is StickerLayer -> drawStickerLayer(canvas, layer, assetCache)
                         is PhotoLayer -> drawPhotoLayer(canvas, layer, assetCache)
-                        is DrawLayer -> drawDrawLayer(canvas, layer, eraseColor, assetCache)
+                        is DrawLayer -> {
+                            if (layer.drawData.isBrushStackRenderable()) {
+                                drawBrushStrokeStack(
+                                    canvas = canvas,
+                                    layers = listOf(layer),
+                                    width = designWidth,
+                                    height = designHeight
+                                )
+                            } else {
+                                drawDrawLayer(canvas, layer, eraseColor, assetCache)
+                            }
+                        }
                     }
                 }
         } finally {
@@ -299,20 +312,80 @@ class AndroidDesignAssetExporter @Inject constructor(
         canvas.restore()
     }
 
+    private fun drawBrushStrokeStack(
+        canvas: Canvas,
+        layers: List<DrawLayer>,
+        width: Float,
+        height: Float
+    ) {
+        if (layers.isEmpty()) return
+        layers.sortedBy { it.zIndex }.forEach { layer ->
+            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            val rect = RectF(
+                layer.transform.offsetX + bounds.minX,
+                layer.transform.offsetY + bounds.minY,
+                layer.transform.offsetX + bounds.maxX,
+                layer.transform.offsetY + bounds.maxY
+            )
+            val checkpoint = canvas.saveLayer(0f, 0f, width, height, null)
+            canvas.save()
+            canvas.translate(rect.centerX(), rect.centerY())
+            canvas.rotate(layer.transform.rotation)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.translate(-rect.width() / 2f, -rect.height() / 2f)
+            canvas.translate(-bounds.minX, -bounds.minY)
+            layer.drawData.forEachBrushStackItem { item ->
+                when (item) {
+                    is BrushStackItem.Draw -> drawStroke(
+                        canvas = canvas,
+                        stroke = item.stroke,
+                        color = resolveStrokeColor(item.stroke),
+                        clear = false
+                    )
+
+                    is BrushStackItem.Erase -> drawStroke(
+                        canvas = canvas,
+                        stroke = item.stroke,
+                        color = Color.TRANSPARENT,
+                        clear = true
+                    )
+                }
+            }
+            canvas.restore()
+            canvas.restoreToCount(checkpoint)
+        }
+    }
+
     private suspend fun drawDrawLayer(
         canvas: Canvas,
         layer: DrawLayer,
         eraseColor: Int,
         assetCache: MutableMap<String, Bitmap?>
     ) {
+        val bounds = layer.drawData.renderBounds()
         canvas.save()
-        canvas.translate(layer.transform.offsetX, layer.transform.offsetY)
-        canvas.scale(layer.transform.scale, layer.transform.scale)
-        canvas.rotate(layer.transform.rotation)
+        if (bounds != null) {
+            val rect = RectF(
+                layer.transform.offsetX + bounds.minX,
+                layer.transform.offsetY + bounds.minY,
+                layer.transform.offsetX + bounds.maxX,
+                layer.transform.offsetY + bounds.maxY
+            )
+            canvas.translate(rect.centerX(), rect.centerY())
+            canvas.rotate(layer.transform.rotation)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.translate(-rect.width() / 2f, -rect.height() / 2f)
+            canvas.translate(-bounds.minX, -bounds.minY)
+        } else {
+            canvas.translate(layer.transform.offsetX, layer.transform.offsetY)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.rotate(layer.transform.rotation)
+        }
         try {
             when (val drawData = layer.drawData) {
-                is DrawLayerData.FreeStroke -> drawStroke(canvas, drawData.stroke, resolveStrokeColor(drawData.stroke))
-                is DrawLayerData.EraseStroke -> drawStroke(canvas, drawData.stroke, eraseColor)
+                is DrawLayerData.FreeStroke -> drawStroke(canvas, drawData.stroke, resolveStrokeColor(drawData.stroke), clear = false)
+                is DrawLayerData.EraseStroke -> drawStroke(canvas, drawData.stroke, eraseColor, clear = false)
+                is DrawLayerData.BrushStack -> Unit
                 is DrawLayerData.StickerTrail -> {
                     val bitmap = loadBitmap(drawData.stickerAssetPathOrUrl, assetCache, 512, 512) ?: return
                     drawData.points.forEachIndexed { index, point ->
@@ -353,7 +426,8 @@ class AndroidDesignAssetExporter @Inject constructor(
     private fun drawStroke(
         canvas: Canvas,
         stroke: BrushStroke,
-        color: Int
+        color: Int,
+        clear: Boolean
     ) {
         if (stroke.points.size < 2) return
 
@@ -363,7 +437,9 @@ class AndroidDesignAssetExporter @Inject constructor(
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             this.color = color
-            if (stroke.brushStyle is BrushStyleSpec.Gradient) {
+            if (clear) {
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            } else if (stroke.brushStyle is BrushStyleSpec.Gradient) {
                 shader = LinearGradient(
                     stroke.points.first().x,
                     stroke.points.first().y,
@@ -656,6 +732,21 @@ class AndroidDesignAssetExporter @Inject constructor(
     }
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
+
+    private fun DrawLayerData.isBrushStackRenderable(): Boolean {
+        return this is DrawLayerData.FreeStroke ||
+            this is DrawLayerData.EraseStroke ||
+            this is DrawLayerData.BrushStack
+    }
+
+    private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -> Unit) {
+        when (this) {
+            is DrawLayerData.FreeStroke -> block(BrushStackItem.Draw(stroke))
+            is DrawLayerData.EraseStroke -> block(BrushStackItem.Erase(stroke))
+            is DrawLayerData.BrushStack -> items.forEach(block)
+            else -> Unit
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun webpFormat(): Bitmap.CompressFormat {

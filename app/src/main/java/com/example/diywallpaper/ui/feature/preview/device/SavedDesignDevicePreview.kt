@@ -20,9 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -40,6 +44,8 @@ import androidx.core.content.res.ResourcesCompat
 import coil.compose.AsyncImage
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.BrushStroke
+import com.example.diywallpaper.domain.model.design.BrushStackItem
+import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.DesignViewportTransform
 import com.example.diywallpaper.domain.model.design.DrawLayer
@@ -54,6 +60,7 @@ import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.ui.feature.editor.editorFontFamily
@@ -143,11 +150,21 @@ private fun SavedDesignProjectCanvas(
                         viewport = viewport
                     )
 
-                    is DrawLayer -> SavedDrawLayer(
-                        layer = layer,
-                        viewport = viewport,
-                        eraseColor = eraseColor
-                    )
+                    is DrawLayer -> {
+                        if (layer.drawData.isBrushStackRenderable()) {
+                            SavedBrushStrokeStack(
+                                layers = listOf(layer),
+                                viewport = viewport,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            SavedDrawLayer(
+                                layer = layer,
+                                viewport = viewport,
+                                eraseColor = eraseColor
+                            )
+                        }
+                    }
                 }
             }
     }
@@ -278,39 +295,152 @@ private fun SavedTextLayer(
 }
 
 @Composable
+private fun SavedBrushStrokeStack(
+    layers: List<DrawLayer>,
+    viewport: DesignViewportTransform,
+    modifier: Modifier = Modifier
+) {
+    if (layers.isEmpty()) return
+    Box(modifier = modifier) {
+        layers.forEach { layer ->
+            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            Canvas(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = viewport.modelXToTarget(layer.transform.offsetX + bounds.minX).roundToInt(),
+                            y = viewport.modelYToTarget(layer.transform.offsetY + bounds.minY).roundToInt()
+                        )
+                    }
+                    .size(
+                        width = with(LocalDensity.current) { (bounds.width * viewport.scale).toDp() },
+                        height = with(LocalDensity.current) { (bounds.height * viewport.scale).toDp() }
+                    )
+                    .graphicsLayer(
+                        rotationZ = layer.transform.rotation,
+                        scaleX = layer.transform.scale,
+                        scaleY = layer.transform.scale,
+                        alpha = layer.transform.alpha
+                    )
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+            ) {
+                withTransform({
+                    translate(left = -bounds.minX * viewport.scale, top = -bounds.minY * viewport.scale)
+                }) {
+                    layer.drawData.forEachBrushStackItem { item ->
+                        drawSavedBrushStackStroke(
+                            item = item,
+                            scale = viewport.scale
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedBrushStackStroke(
+    item: BrushStackItem,
+    scale: Float
+) {
+    val stroke = when (item) {
+        is BrushStackItem.Draw -> item.stroke
+        is BrushStackItem.Erase -> item.stroke
+    }
+    if (stroke.points.size < 2) return
+    val path = androidx.compose.ui.graphics.Path().apply {
+        moveTo(stroke.points.first().x * scale, stroke.points.first().y * scale)
+        stroke.points.drop(1).forEach { point ->
+            lineTo(point.x * scale, point.y * scale)
+        }
+    }
+    val brush = when (val style = stroke.brushStyle) {
+        is BrushStyleSpec.Gradient -> Brush.linearGradient(
+            colors = style.colors.map { parsePreviewColor(it) }
+        )
+
+        is BrushStyleSpec.Solid -> Brush.linearGradient(
+            listOf(parsePreviewColor(style.colorHex), parsePreviewColor(style.colorHex))
+        )
+
+        null -> {
+            val color = parsePreviewColor(stroke.colorHex ?: "#1D1726")
+            Brush.linearGradient(listOf(color, color))
+        }
+    }
+    drawPath(
+        path = path,
+        brush = brush,
+        style = Stroke(
+            width = stroke.strokeWidth * scale,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round
+        ),
+        blendMode = if (item is BrushStackItem.Erase) BlendMode.Clear else BlendMode.SrcOver
+    )
+}
+
+@Composable
 private fun SavedDrawLayer(
     layer: DrawLayer,
     viewport: DesignViewportTransform,
     eraseColor: Color
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val bounds = layer.drawData.renderBounds() ?: return
     val textTrailTypeface = remember(layer.drawData) {
         val textTrail = layer.drawData as? DrawLayerData.TextTrail
         textTrail?.let {
             ResourcesCompat.getFont(context, editorFontResId(it.textStyle.fontFamilyId))
         }
     }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = viewport.modelXToTarget(layer.transform.offsetX + bounds.minX).roundToInt(),
+                    y = viewport.modelYToTarget(layer.transform.offsetY + bounds.minY).roundToInt()
+                )
+            }
+            .size(
+                width = with(density) { (bounds.width * viewport.scale).toDp() },
+                height = with(density) { (bounds.height * viewport.scale).toDp() }
+            )
+            .graphicsLayer(
+                rotationZ = layer.transform.rotation,
+                scaleX = layer.transform.scale,
+                scaleY = layer.transform.scale,
+                alpha = layer.transform.alpha
+            )
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             when (val data = layer.drawData) {
-                is DrawLayerData.FreeStroke -> drawPreviewStroke(
+                is DrawLayerData.FreeStroke -> drawPreviewStrokeLocal(
                     stroke = data.stroke,
-                    transform = layer.transform,
-                    viewport = viewport,
+                    originX = bounds.minX,
+                    originY = bounds.minY,
+                    scale = viewport.scale,
                     color = parsePreviewColor(data.stroke.colorHex ?: "#1D1726")
                 )
 
-                is DrawLayerData.EraseStroke -> drawPreviewStroke(
+                is DrawLayerData.EraseStroke -> drawPreviewStrokeLocal(
                     stroke = data.stroke,
-                    transform = layer.transform,
-                    viewport = viewport,
+                    originX = bounds.minX,
+                    originY = bounds.minY,
+                    scale = viewport.scale,
                     color = eraseColor
                 )
 
+                is DrawLayerData.BrushStack -> Unit
+
                 is DrawLayerData.TextTrail -> drawPreviewTextTrail(
                     data = data,
-                    transform = layer.transform,
-                    viewport = viewport,
+                    originX = bounds.minX,
+                    originY = bounds.minY,
+                    scale = viewport.scale,
                     typeface = textTrailTypeface
                 )
 
@@ -321,8 +451,9 @@ private fun SavedDrawLayer(
         if (stickerTrail != null) {
             DrawPreviewStickerTrail(
                 data = stickerTrail,
-                transform = layer.transform,
-                viewport = viewport
+                originX = bounds.minX,
+                originY = bounds.minY,
+                viewportScale = viewport.scale
             )
         }
     }
@@ -331,10 +462,12 @@ private fun SavedDrawLayer(
 @Composable
 private fun DrawPreviewStickerTrail(
     data: DrawLayerData.StickerTrail,
-    transform: LayerTransform,
-    viewport: DesignViewportTransform
+    originX: Float,
+    originY: Float,
+    viewportScale: Float
 ) {
     if (data.points.isEmpty()) return
+    val density = LocalDensity.current
     data.points.forEachIndexed { index, point ->
         if (index % data.spacing.coerceAtLeast(1f).toInt().coerceAtLeast(1) == 0) {
             val rotation = if (data.rotationMode == StickerTrailRotationMode.FOLLOW_PATH && index > 0) {
@@ -349,17 +482,12 @@ private fun DrawPreviewStickerTrail(
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            x = viewport.modelXToTarget(transform.offsetX + point.x - data.stampSize / 2f).roundToInt(),
-                            y = viewport.modelYToTarget(transform.offsetY + point.y - data.stampSize / 2f).roundToInt()
+                            x = ((point.x - originX) * viewportScale).roundToInt(),
+                            y = ((point.y - originY) * viewportScale).roundToInt()
                         )
                     }
-                    .size(with(LocalDensity.current) { (data.stampSize * viewport.scale).toDp() })
-                    .graphicsLayer(
-                        rotationZ = transform.rotation + rotation,
-                        scaleX = transform.scale,
-                        scaleY = transform.scale,
-                        alpha = transform.alpha
-                    ),
+                    .size(with(density) { (data.stampSize * viewportScale).toDp() })
+                    .graphicsLayer(rotationZ = rotation),
                 contentScale = ContentScale.Fit
             )
         }
@@ -398,28 +526,23 @@ private fun SavedLayerBox(
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewStroke(
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewStrokeLocal(
     stroke: BrushStroke,
-    transform: LayerTransform,
-    viewport: DesignViewportTransform,
+    originX: Float,
+    originY: Float,
+    scale: Float,
     color: Color
 ) {
     if (stroke.points.size < 2) return
     drawContext.canvas.nativeCanvas.apply {
-        save()
-        translate(
-            viewport.modelXToTarget(transform.offsetX),
-            viewport.modelYToTarget(transform.offsetY)
-        )
-        scale(viewport.scale, viewport.scale)
-        scale(transform.scale, transform.scale)
-        rotate(transform.rotation)
         val path = android.graphics.Path()
         stroke.points.forEachIndexed { index, point ->
+            val x = (point.x - originX) * scale
+            val y = (point.y - originY) * scale
             if (index == 0) {
-                path.moveTo(point.x, point.y)
+                path.moveTo(x, y)
             } else {
-                path.lineTo(point.x, point.y)
+                path.lineTo(x, y)
             }
         }
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -427,40 +550,37 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewStroke(
             style = android.graphics.Paint.Style.STROKE
             strokeCap = android.graphics.Paint.Cap.ROUND
             strokeJoin = android.graphics.Paint.Join.ROUND
-            strokeWidth = stroke.strokeWidth
+            strokeWidth = stroke.strokeWidth * scale
         }
         drawPath(path, paint)
-        restore()
     }
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewTextTrail(
     data: DrawLayerData.TextTrail,
-    transform: LayerTransform,
-    viewport: DesignViewportTransform,
+    originX: Float,
+    originY: Float,
+    scale: Float,
     typeface: Typeface?
 ) {
     if (data.points.isEmpty() || data.text.isBlank()) return
     val nativeCanvas = drawContext.canvas.nativeCanvas
     val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         color = resolvePreviewTextColor(data.textStyle.textBrush, data.textStyle.textColorHex).toArgb()
-        textSize = data.textStyle.fontSizeSp * density * viewport.scale
+        textSize = data.textStyle.fontSizeSp * density * scale
         isFakeBoldText = true
         this.typeface = typeface
     }
-    nativeCanvas.save()
-    nativeCanvas.translate(
-        viewport.modelXToTarget(transform.offsetX),
-        viewport.modelYToTarget(transform.offsetY)
-    )
-    nativeCanvas.scale(transform.scale, transform.scale)
-    nativeCanvas.rotate(transform.rotation)
     data.points.forEachIndexed { index, point ->
         if (index % 2 == 0) {
-            nativeCanvas.drawText(data.text, point.x * viewport.scale, point.y * viewport.scale, paint)
+            nativeCanvas.drawText(
+                data.text,
+                (point.x - originX) * scale,
+                (point.y - originY) * scale,
+                paint
+            )
         }
     }
-    nativeCanvas.restore()
 }
 
 private fun resolvePreviewTextColor(
@@ -484,4 +604,19 @@ private fun resolvePreviewEraseColor(background: EditorBackground): Color {
 private fun parsePreviewColor(hex: String): Color {
     return runCatching { Color(android.graphics.Color.parseColor(hex)) }
         .getOrDefault(Color.White)
+}
+
+private fun DrawLayerData.isBrushStackRenderable(): Boolean {
+    return this is DrawLayerData.FreeStroke ||
+        this is DrawLayerData.EraseStroke ||
+        this is DrawLayerData.BrushStack
+}
+
+private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -> Unit) {
+    when (this) {
+        is DrawLayerData.FreeStroke -> block(BrushStackItem.Draw(stroke))
+        is DrawLayerData.EraseStroke -> block(BrushStackItem.Erase(stroke))
+        is DrawLayerData.BrushStack -> items.forEach(block)
+        else -> Unit
+    }
 }

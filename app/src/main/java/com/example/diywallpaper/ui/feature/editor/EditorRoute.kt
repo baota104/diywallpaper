@@ -188,8 +188,29 @@ fun EditorRoute(
                 spacing = brushSize * 1.8f
             )
         },
+        onTextBrushConfigChanged = { text, fontFamilyId, colorHex, brushSize ->
+            val fontOption = uiState.availableFonts.firstOrNull { it.id == fontFamilyId }
+            viewModel.updateTextBrushToolConfig(
+                text = text,
+                style = TextStyleSpec(
+                    fontFamilyId = fontFamilyId,
+                    fontDisplayName = fontOption?.displayName ?: fontFamilyId,
+                    fontSizeSp = brushSize + 8f,
+                    textColorHex = colorHex,
+                    textBrush = TextBrushStyle.Solid(colorHex)
+                ),
+                spacing = brushSize * 1.8f
+            )
+        },
         onApplyBrush = { erase, colorHex, brushSize ->
             viewModel.configureBrushTool(
+                erase = erase,
+                colorHex = colorHex,
+                brushSize = brushSize
+            )
+        },
+        onBrushConfigChanged = { erase, colorHex, brushSize ->
+            viewModel.updateBrushToolConfig(
                 erase = erase,
                 colorHex = colorHex,
                 brushSize = brushSize

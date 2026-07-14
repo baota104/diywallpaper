@@ -6,6 +6,7 @@ import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.BackgroundCreateItem
 import com.example.diywallpaper.domain.model.StickerItem
 import com.example.diywallpaper.domain.model.design.BrushStroke
+import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.CropSpec
 import com.example.diywallpaper.domain.model.design.DesignSourceType
@@ -71,6 +72,7 @@ class EditorViewModel @Inject constructor(
     private var currentExportedImagePath: String? = null
     private var activeBrushConfig: BrushToolConfig? = null
     private var activeTextBrushConfig: TextBrushToolConfig? = null
+    private var activeBrushSessionLayerId: String? = null
 
     init {
         loadTextLibrary()
@@ -137,14 +139,33 @@ class EditorViewModel @Inject constructor(
     }
 
     fun setActiveTool(tool: EditorTool) {
+        val resolvedTool = if (tool == EditorTool.BRUSH_DRAW && activeBrushConfig?.erase == true) {
+            EditorTool.BRUSH_ERASE
+        } else {
+            tool
+        }
+        val normalizedBrushConfig = when (resolvedTool) {
+            EditorTool.BRUSH_DRAW -> (activeBrushConfig ?: defaultBrushConfig()).copy(erase = false)
+            EditorTool.BRUSH_ERASE -> (activeBrushConfig ?: defaultBrushConfig()).copy(erase = true)
+            else -> activeBrushConfig
+        }
+        if (normalizedBrushConfig != activeBrushConfig) {
+            activeBrushConfig = normalizedBrushConfig
+        }
+        val nextOpenedToolSheet = when {
+            resolvedTool == EditorTool.PREVIEW -> null
+            _uiState.value.openedToolSheet == resolvedTool -> null
+            else -> resolvedTool
+        }
+        if (nextOpenedToolSheet != EditorTool.BRUSH_DRAW && nextOpenedToolSheet != EditorTool.BRUSH_ERASE) {
+            activeBrushSessionLayerId = null
+        }
         _uiState.update { state ->
             state.copy(
-                activeTool = tool,
-                openedToolSheet = when {
-                    tool == EditorTool.PREVIEW -> null
-                    state.openedToolSheet == tool -> null
-                    else -> tool
-                },
+                activeTool = resolvedTool,
+                openedToolSheet = nextOpenedToolSheet,
+                activeBrushSessionLayerId = activeBrushSessionLayerId,
+                activeBrushConfig = activeBrushConfig,
                 isPreviewMode = false,
                 saveMessage = null
             )
@@ -152,12 +173,40 @@ class EditorViewModel @Inject constructor(
     }
 
     fun dismissToolSheet() {
+        activeBrushSessionLayerId = null
         _uiState.update { state ->
-            state.copy(openedToolSheet = null)
+            state.copy(
+                openedToolSheet = null,
+                activeBrushSessionLayerId = null
+            )
         }
     }
 
     fun configureBrushTool(
+        erase: Boolean,
+        colorHex: String,
+        brushSize: Float
+    ) {
+        val config = BrushToolConfig(
+            erase = erase,
+            colorHex = colorHex,
+            brushSize = brushSize
+        )
+        activeBrushConfig = config
+        activeTextBrushConfig = null
+        _uiState.update {
+            activeBrushSessionLayerId = null
+            it.copy(
+                activeTool = if (erase) EditorTool.BRUSH_ERASE else EditorTool.BRUSH_DRAW,
+                openedToolSheet = null,
+                activeBrushSessionLayerId = null,
+                activeBrushConfig = activeBrushConfig,
+                activeTextBrushConfig = null
+            )
+        }
+    }
+
+    fun updateBrushToolConfig(
         erase: Boolean,
         colorHex: String,
         brushSize: Float
@@ -171,7 +220,7 @@ class EditorViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activeTool = if (erase) EditorTool.BRUSH_ERASE else EditorTool.BRUSH_DRAW,
-                openedToolSheet = null,
+                activeBrushSessionLayerId = activeBrushSessionLayerId,
                 activeBrushConfig = activeBrushConfig,
                 activeTextBrushConfig = null
             )
@@ -188,11 +237,35 @@ class EditorViewModel @Inject constructor(
             style = style,
             spacing = spacing
         )
+        activeBrushSessionLayerId = null
         activeBrushConfig = null
         _uiState.update {
             it.copy(
                 activeTool = EditorTool.TEXT_BRUSH,
                 openedToolSheet = null,
+                activeBrushSessionLayerId = null,
+                activeBrushConfig = null,
+                activeTextBrushConfig = activeTextBrushConfig
+            )
+        }
+    }
+
+    fun updateTextBrushToolConfig(
+        text: String,
+        style: TextStyleSpec,
+        spacing: Float
+    ) {
+        activeTextBrushConfig = TextBrushToolConfig(
+            text = text,
+            style = style,
+            spacing = spacing
+        )
+        activeBrushSessionLayerId = null
+        activeBrushConfig = null
+        _uiState.update {
+            it.copy(
+                activeTool = EditorTool.TEXT_BRUSH,
+                activeBrushSessionLayerId = null,
                 activeBrushConfig = null,
                 activeTextBrushConfig = activeTextBrushConfig
             )
@@ -482,14 +555,18 @@ class EditorViewModel @Inject constructor(
         brushStyle: BrushStyleSpec? = null,
         strokeWidth: Float
     ) {
+        val item = BrushStackItem.Draw(
+            BrushStroke(
+                points = points,
+                colorHex = colorHex,
+                brushStyle = brushStyle,
+                strokeWidth = strokeWidth
+            )
+        )
+        if (appendBrushStackItem(item)) return
         addDrawLayer(
             DrawLayerData.FreeStroke(
-                BrushStroke(
-                    points = points,
-                    colorHex = colorHex,
-                    brushStyle = brushStyle,
-                    strokeWidth = strokeWidth
-                )
+                item.stroke
             )
         )
     }
@@ -498,14 +575,13 @@ class EditorViewModel @Inject constructor(
         points: List<StrokePoint>,
         strokeWidth: Float
     ) {
-        addDrawLayer(
-            DrawLayerData.EraseStroke(
-                BrushStroke(
-                    points = points,
-                    strokeWidth = strokeWidth
-                )
+        val item = BrushStackItem.Erase(
+            BrushStroke(
+                points = points,
+                strokeWidth = strokeWidth
             )
         )
+        appendBrushStackItem(item)
     }
 
     fun addStickerTrail(
@@ -893,6 +969,53 @@ class EditorViewModel @Inject constructor(
         )
     }
 
+    private fun appendBrushStackItem(item: BrushStackItem): Boolean {
+        val shouldUseSession = _uiState.value.openedToolSheet == EditorTool.BRUSH_DRAW ||
+            _uiState.value.openedToolSheet == EditorTool.BRUSH_ERASE
+        if (!shouldUseSession) return false
+
+        mutateProject { project ->
+            val existingSessionId = activeBrushSessionLayerId
+            val existingSession = project.layers
+                .filterIsInstance<DrawLayer>()
+                .firstOrNull { layer ->
+                    layer.id == existingSessionId && layer.drawData is DrawLayerData.BrushStack
+                }
+
+            if (existingSession != null) {
+                val updatedLayers = project.layers.map { layer ->
+                    if (layer.id == existingSession.id && layer is DrawLayer) {
+                        val stack = layer.drawData as DrawLayerData.BrushStack
+                        layer.copy(drawData = stack.copy(items = stack.items + item))
+                    } else {
+                        layer
+                    }
+                }
+                project.copy(layers = updatedLayers, updatedAt = now())
+            } else if (item is BrushStackItem.Draw) {
+                val layerId = generateLayerId("brush_stack")
+                activeBrushSessionLayerId = layerId
+                val nextIndex = (project.layers.maxOfOrNull { it.zIndex } ?: 0) + 1
+                project.copy(
+                    layers = project.layers + DrawLayer(
+                        id = layerId,
+                        drawData = DrawLayerData.BrushStack(items = listOf(item)),
+                        zIndex = nextIndex,
+                        transform = LayerTransform(0f, 0f, 1f, 0f),
+                        isLocked = false,
+                        isHidden = false
+                    ),
+                    selectedLayerId = layerId,
+                    updatedAt = now()
+                )
+            } else {
+                // Eraser only affects the current brush session; it must never create its own layer.
+                project
+            }
+        }
+        return true
+    }
+
     private fun reorderSelectedLayer(
         reorder: (layers: List<EditorLayer>, selectedIndex: Int) -> List<EditorLayer>
     ) {
@@ -971,6 +1094,7 @@ class EditorViewModel @Inject constructor(
             layers = layers,
             placeholders = placeholders,
             selectedLayerId = selectedLayerId,
+            activeBrushSessionLayerId = activeBrushSessionLayerId,
             activeTool = currentState.activeTool,
             openedToolSheet = currentState.openedToolSheet,
             activeBrushConfig = activeBrushConfig,
@@ -1010,6 +1134,14 @@ class EditorViewModel @Inject constructor(
     }
 
     private fun now(): Long = System.currentTimeMillis()
+
+    private fun defaultBrushConfig(): BrushToolConfig {
+        return BrushToolConfig(
+            erase = false,
+            colorHex = "#1C1527",
+            brushSize = 28f
+        )
+    }
 
     private companion object {
         const val AUTOSAVE_DELAY_MS = 750L
