@@ -119,6 +119,7 @@ fun EditorRoute(
         onUndoClick = viewModel::undo,
         onRedoClick = viewModel::redo,
         onPreviewClick = viewModel::enterPreviewMode,
+        onExitPreviewClick = viewModel::exitPreviewMode,
         onNextClick = viewModel::preparePreviewNavigation,
         onToolSelected = viewModel::setActiveTool,
         onDismissToolSheet = viewModel::dismissToolSheet,

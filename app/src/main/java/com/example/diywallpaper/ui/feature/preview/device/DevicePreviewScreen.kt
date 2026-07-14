@@ -66,7 +66,7 @@ fun DevicePreviewScreen(
         },
         onSelectTarget = viewModel::applyStaticWallpaper,
         onDismissDialog = viewModel::dismissTargetDialog,
-        modifier = modifier.statusBarsPadding()
+        modifier = modifier
     )
 }
 
@@ -125,7 +125,9 @@ fun DevicePreviewContent(
                         isChromeVisible = uiState.isChromeVisible,
                         onBackClick = onBackClick,
                         onToggleChrome = onToggleChrome,
-                        modifier = Modifier.align(Alignment.TopCenter)
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
                     )
 
                     if (uiState.primaryAction != null) {

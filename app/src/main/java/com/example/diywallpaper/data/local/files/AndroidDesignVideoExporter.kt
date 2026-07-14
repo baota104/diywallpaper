@@ -1,6 +1,7 @@
 package com.example.diywallpaper.data.local.files
 
 import android.content.Context
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -9,6 +10,7 @@ import android.graphics.LinearGradient
 import android.graphics.Movie
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.opengl.EGL14
@@ -24,6 +26,8 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.view.Surface
+import android.view.WindowManager
+import androidx.core.content.res.ResourcesCompat
 import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStroke
@@ -37,7 +41,13 @@ import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StickerTrailRotationMode
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
+import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
+import com.example.diywallpaper.domain.model.design.designViewportTransform
+import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.stickerRenderSize
+import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.domain.repository.DesignVideoExporter
+import com.example.diywallpaper.ui.feature.editor.editorFontResId
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -79,8 +89,9 @@ class AndroidDesignVideoExporter @Inject constructor(
         outputFile: File,
         assets: RenderAssets
     ) {
-        val width = project.canvas.width.coerceAtLeast(2).coerceAtMost(MAX_VIDEO_WIDTH).even()
-        val height = project.canvas.height.coerceAtLeast(2).coerceAtMost(MAX_VIDEO_HEIGHT).even()
+        val outputSize = resolveVideoOutputSize(project)
+        val width = outputSize.width
+        val height = outputSize.height
         val format = MediaFormat.createVideoFormat(MIME_TYPE, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
@@ -181,22 +192,36 @@ class AndroidDesignVideoExporter @Inject constructor(
         outputWidth: Int,
         outputHeight: Int
     ): Int {
-        val scaleX = outputWidth.toFloat() / project.canvas.width.toFloat().coerceAtLeast(1f)
-        val scaleY = outputHeight.toFloat() / project.canvas.height.toFloat().coerceAtLeast(1f)
-        drawBackground(canvas, project.background, assets, outputWidth.toFloat(), outputHeight.toFloat())
+        val designWidth = project.canvas.width.toFloat().coerceAtLeast(1f)
+        val designHeight = project.canvas.height.toFloat().coerceAtLeast(1f)
+        val viewport = designViewportTransform(
+            designWidth = designWidth,
+            designHeight = designHeight,
+            targetWidth = outputWidth.toFloat(),
+            targetHeight = outputHeight.toFloat(),
+            scaleMode = DesignViewportScaleMode.Cover
+        )
         var renderedLayers = 0
-        project.layers
-            .filterNot(EditorLayer::isHidden)
-            .sortedBy(EditorLayer::zIndex)
-            .forEach { layer ->
-                val rendered = when (layer) {
-                    is StickerLayer -> drawSticker(canvas, layer, assets, frameIndex, scaleX, scaleY)
-                    is PhotoLayer -> drawPhoto(canvas, layer, assets, scaleX, scaleY)
-                    is TextLayer -> drawText(canvas, layer, scaleX, scaleY)
-                    is DrawLayer -> drawDrawLayer(canvas, layer, assets, frameIndex, scaleX, scaleY)
+        canvas.save()
+        canvas.translate(viewport.offsetX, viewport.offsetY)
+        canvas.scale(viewport.scale, viewport.scale)
+        try {
+            drawBackground(canvas, project.background, assets, designWidth, designHeight)
+            project.layers
+                .filterNot(EditorLayer::isHidden)
+                .sortedBy(EditorLayer::zIndex)
+                .forEach { layer ->
+                    val rendered = when (layer) {
+                        is StickerLayer -> drawSticker(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
+                        is PhotoLayer -> drawPhoto(canvas, layer, assets, scaleX = 1f, scaleY = 1f)
+                        is TextLayer -> drawText(canvas, layer, scaleX = 1f, scaleY = 1f)
+                        is DrawLayer -> drawDrawLayer(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
+                    }
+                    if (rendered) renderedLayers += 1
                 }
-                if (rendered) renderedLayers += 1
-            }
+        } finally {
+            canvas.restore()
+        }
         return renderedLayers
     }
 
@@ -240,7 +265,16 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleY: Float
     ): Boolean {
         val source = layer.animatedAssetPathOrUrl ?: layer.assetPathOrUrl
-        val rect = layerRect(layer.transform.offsetX, layer.transform.offsetY, DEFAULT_LAYER_SIZE, DEFAULT_LAYER_SIZE, layer.transform.scale, scaleX, scaleY)
+        val size = stickerRenderSize()
+        val rect = centerScaledLayerRect(
+            offsetX = layer.transform.offsetX,
+            offsetY = layer.transform.offsetY,
+            width = size.width,
+            height = size.height,
+            scale = layer.transform.scale,
+            scaleX = scaleX,
+            scaleY = scaleY
+        )
         var rendered = false
         canvas.save()
         canvas.rotate(layer.transform.rotation, rect.centerX(), rect.centerY())
@@ -272,10 +306,19 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleY: Float
     ): Boolean {
         val bitmap = assets.bitmaps[layer.localPath] ?: return false
-        val rect = layerRect(layer.transform.offsetX, layer.transform.offsetY, DEFAULT_LAYER_SIZE, DEFAULT_LAYER_SIZE, layer.transform.scale, scaleX, scaleY)
+        val size = photoRenderSize(layer.crop?.ratio)
+        val rect = centerScaledLayerRect(
+            offsetX = layer.transform.offsetX,
+            offsetY = layer.transform.offsetY,
+            width = size.width,
+            height = size.height,
+            scale = layer.transform.scale,
+            scaleX = scaleX,
+            scaleY = scaleY
+        )
         canvas.save()
         canvas.rotate(layer.transform.rotation, rect.centerX(), rect.centerY())
-        drawBitmapCover(canvas, bitmap, rect, layer.transform.alpha)
+        drawBitmapCrop(canvas, bitmap, layer.crop, rect, layer.transform.alpha)
         canvas.restore()
         return true
     }
@@ -286,20 +329,32 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleX: Float,
         scaleY: Float
     ): Boolean {
+        if (layer.text.isBlank()) return false
+        val size = textRenderSize()
+        val rect = centerScaledLayerRect(
+            offsetX = layer.transform.offsetX,
+            offsetY = layer.transform.offsetY,
+            width = size.width,
+            height = size.height,
+            scale = layer.transform.scale,
+            scaleX = scaleX,
+            scaleY = scaleY
+        )
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = resolveTextColor(layer)
-            textSize = layer.style.fontSizeSp * context.resources.displayMetrics.scaledDensity * ((scaleX + scaleY) / 2f)
+            textSize = layer.style.fontSizeSp *
+                context.resources.displayMetrics.scaledDensity *
+                ((scaleX + scaleY) / 2f) *
+                layer.transform.scale
             alpha = (layer.transform.alpha * 255).toInt().coerceIn(0, 255)
             isFakeBoldText = true
+            typeface = ResourcesCompat.getFont(context, editorFontResId(layer.style.fontFamilyId))
         }
-        val x = layer.transform.offsetX * scaleX
-        val y = layer.transform.offsetY * scaleY + paint.textSize
         canvas.save()
-        canvas.rotate(layer.transform.rotation, x, y)
-        canvas.scale(layer.transform.scale, layer.transform.scale, x, y)
-        canvas.drawText(layer.text.ifBlank { " " }, x, y, paint)
+        canvas.rotate(layer.transform.rotation, rect.centerX(), rect.centerY())
+        canvas.drawText(layer.text, rect.left, rect.top + paint.textSize, paint)
         canvas.restore()
-        return layer.text.isNotBlank()
+        return true
     }
 
     private fun drawDrawLayer(
@@ -367,6 +422,7 @@ class AndroidDesignVideoExporter @Inject constructor(
             color = resolveTextBrushColor(data.textStyle.textBrush, data.textStyle.textColorHex)
             textSize = data.textStyle.fontSizeSp * context.resources.displayMetrics.scaledDensity * ((scaleX + scaleY) / 2f)
             isFakeBoldText = true
+            typeface = ResourcesCompat.getFont(context, editorFontResId(data.textStyle.fontFamilyId))
         }
         data.points.forEachIndexed { index, point ->
             if (index % 2 == 0) {
@@ -471,7 +527,7 @@ class AndroidDesignVideoExporter @Inject constructor(
         }.getOrNull()
     }
 
-    private fun layerRect(
+    private fun centerScaledLayerRect(
         offsetX: Float,
         offsetY: Float,
         width: Float,
@@ -482,9 +538,18 @@ class AndroidDesignVideoExporter @Inject constructor(
     ): RectF {
         val left = offsetX * scaleX
         val top = offsetY * scaleY
-        val right = left + width * scaleX * scale
-        val bottom = top + height * scaleY * scale
-        return RectF(left, top, right, bottom)
+        val baseWidth = width * scaleX
+        val baseHeight = height * scaleY
+        val centerX = left + baseWidth / 2f
+        val centerY = top + baseHeight / 2f
+        val scaledWidth = baseWidth * scale
+        val scaledHeight = baseHeight * scale
+        return RectF(
+            centerX - scaledWidth / 2f,
+            centerY - scaledHeight / 2f,
+            centerX + scaledWidth / 2f,
+            centerY + scaledHeight / 2f
+        )
     }
 
     private fun drawBitmapCover(canvas: Canvas, bitmap: Bitmap, rect: RectF, alpha: Float = 1f) {
@@ -510,6 +575,35 @@ class AndroidDesignVideoExporter @Inject constructor(
         canvas.drawBitmap(bitmap, null, rect, paint)
     }
 
+    private fun drawBitmapCrop(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        crop: com.example.diywallpaper.domain.model.design.CropSpec?,
+        rect: RectF,
+        alpha: Float
+    ) {
+        val left = ((crop?.normalizedLeft ?: 0f).coerceIn(0f, 1f) * bitmap.width)
+            .roundToInt()
+        val top = ((crop?.normalizedTop ?: 0f).coerceIn(0f, 1f) * bitmap.height)
+            .roundToInt()
+        val right = ((crop?.normalizedRight ?: 1f).coerceIn(0f, 1f) * bitmap.width)
+            .roundToInt()
+            .coerceAtLeast(left + 1)
+        val bottom = ((crop?.normalizedBottom ?: 1f).coerceIn(0f, 1f) * bitmap.height)
+            .roundToInt()
+            .coerceAtLeast(top + 1)
+        val src = Rect(
+            left.coerceIn(0, bitmap.width - 1),
+            top.coerceIn(0, bitmap.height - 1),
+            right.coerceIn(1, bitmap.width),
+            bottom.coerceIn(1, bitmap.height)
+        )
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            this.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+        }
+        canvas.drawBitmap(bitmap, src, rect, paint)
+    }
+
     private fun resolveTextColor(layer: TextLayer): Int {
         return resolveTextBrushColor(layer.style.textBrush, layer.style.textColorHex)
     }
@@ -528,7 +622,40 @@ class AndroidDesignVideoExporter @Inject constructor(
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
 
+    private fun resolveVideoOutputSize(project: EditorProject): VideoOutputSize {
+        val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.getSystemService(WindowManager::class.java)
+                ?.maximumWindowMetrics
+                ?.bounds
+        } else {
+            null
+        }
+        val metrics = context.resources.displayMetrics
+        val displayWidth = bounds?.width()?.takeIf { it > 0 }
+            ?: metrics.widthPixels.takeIf { it > 0 }
+            ?: project.canvas.width
+        val displayHeight = bounds?.height()?.takeIf { it > 0 }
+            ?: metrics.heightPixels.takeIf { it > 0 }
+            ?: project.canvas.height
+        val aspectRatio = displayWidth.toFloat() / displayHeight.toFloat().coerceAtLeast(1f)
+        var height = minOf(displayHeight, MAX_VIDEO_HEIGHT).coerceAtLeast(2)
+        var width = (height * aspectRatio).roundToInt().coerceAtLeast(2)
+        if (width > MAX_VIDEO_WIDTH) {
+            width = MAX_VIDEO_WIDTH
+            height = (width / aspectRatio).roundToInt().coerceAtLeast(2)
+        }
+        return VideoOutputSize(
+            width = width.even().coerceAtLeast(2),
+            height = height.even().coerceAtLeast(2)
+        )
+    }
+
     private fun Int.presentationTimeNs(): Long = this * 1_000_000_000L / FRAME_RATE
+
+    private data class VideoOutputSize(
+        val width: Int,
+        val height: Int
+    )
 
     private data class RenderAssets(
         val bitmaps: Map<String, Bitmap?>,
@@ -737,7 +864,6 @@ class AndroidDesignVideoExporter @Inject constructor(
         const val ENCODER_TIMEOUT_US = 10_000L
         const val MAX_VIDEO_WIDTH = 1080
         const val MAX_VIDEO_HEIGHT = 1920
-        const val DEFAULT_LAYER_SIZE = 220f
         const val DEFAULT_GIF_DURATION_MS = 1000
         const val EGL_RECORDABLE_ANDROID = 0x3142
     }

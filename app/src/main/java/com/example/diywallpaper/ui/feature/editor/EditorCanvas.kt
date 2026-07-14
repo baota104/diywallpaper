@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -61,7 +62,7 @@ import coil.compose.AsyncImage
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
-import com.example.diywallpaper.domain.model.design.CropPresetRatio
+import com.example.diywallpaper.domain.model.design.DESIGN_RENDER_LAYER_SIDE
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -74,6 +75,7 @@ import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
+import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
 import com.example.diywallpaper.ui.theme.PlusJakartaSans
 import kotlin.math.atan2
@@ -81,13 +83,6 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
-
-private const val BaseVisualSide = 220f
-
-private data class VisualSize(
-    val width: Float,
-    val height: Float
-)
 
 @Composable
 fun EditorCanvas(
@@ -486,7 +481,7 @@ private fun PhotoLayerItem(
     previewTransform: LayerTransform?
 ) {
     val renderTransform = previewTransform ?: layer.transform
-    val baseSize = photoBaseSize(layer.crop?.ratio)
+    val baseSize = photoRenderSize(layer.crop?.ratio)
     Box(
         modifier = Modifier
             .offset {
@@ -565,7 +560,7 @@ private fun ImageLayerItem(
                     y = (renderTransform.offsetY * scaleY).roundToInt()
                 )
             }
-            .size(pxToDp(BaseVisualSide * scaleX), pxToDp(BaseVisualSide * scaleY))
+            .size(pxToDp(DESIGN_RENDER_LAYER_SIDE * scaleX), pxToDp(DESIGN_RENDER_LAYER_SIDE * scaleY))
             .graphicsLayer(
                 rotationZ = renderTransform.rotation,
                 scaleX = renderTransform.scale,
@@ -595,30 +590,23 @@ private fun DrawLayerItem(
     isSelected: Boolean,
     previewTransform: LayerTransform?
 ) {
-    val bounds = layer.drawData.rawBounds() ?: return
     val renderTransform = previewTransform ?: layer.transform
     Box(
         modifier = Modifier
-            .offset {
-                IntOffset(
-                    x = ((bounds.minX + renderTransform.offsetX) * scaleX).roundToInt(),
-                    y = ((bounds.minY + renderTransform.offsetY) * scaleY).roundToInt()
-                )
-            }
-            .size(
-                width = pxToDp(bounds.width * scaleX),
-                height = pxToDp(bounds.height * scaleY)
-            )
-            .graphicsLayer(
-                rotationZ = renderTransform.rotation,
-                scaleX = renderTransform.scale,
-                scaleY = renderTransform.scale,
+            .fillMaxSize()
+            .graphicsLayer {
+                translationX = renderTransform.offsetX * scaleX
+                translationY = renderTransform.offsetY * scaleY
+                rotationZ = renderTransform.rotation
+                this.scaleX = renderTransform.scale
+                this.scaleY = renderTransform.scale
                 alpha = renderTransform.alpha
-            )
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
     ) {
         when (val drawData = layer.drawData) {
             is DrawLayerData.FreeStroke -> StrokeCanvas(
-                stroke = drawData.stroke.translate(-bounds.minX, -bounds.minY),
+                stroke = drawData.stroke,
                 scaleX = scaleX,
                 scaleY = scaleY,
                 canvasWidthPx = canvasWidthPx,
@@ -628,7 +616,7 @@ private fun DrawLayerItem(
             )
 
             is DrawLayerData.EraseStroke -> StrokeCanvas(
-                stroke = drawData.stroke.translate(-bounds.minX, -bounds.minY),
+                stroke = drawData.stroke,
                 scaleX = scaleX,
                 scaleY = scaleY,
                 canvasWidthPx = canvasWidthPx,
@@ -638,13 +626,13 @@ private fun DrawLayerItem(
             )
 
             is DrawLayerData.TextTrail -> TextTrailContent(
-                drawData = drawData.translate(-bounds.minX, -bounds.minY),
+                drawData = drawData,
                 scaleX = scaleX,
                 scaleY = scaleY
             )
 
             is DrawLayerData.StickerTrail -> StickerTrailContent(
-                drawData = drawData.translate(-bounds.minX, -bounds.minY),
+                drawData = drawData,
                 scaleX = scaleX,
                 scaleY = scaleY
             )
@@ -1057,8 +1045,8 @@ private fun EditorLayer.toFrameSpec(
                 layerId = id,
                 offsetXPx = transform.offsetX * scaleX,
                 offsetYPx = transform.offsetY * scaleY,
-                baseWidthPx = BaseVisualSide * scaleX,
-                baseHeightPx = BaseVisualSide * scaleY,
+                baseWidthPx = DESIGN_RENDER_LAYER_SIDE * scaleX,
+                baseHeightPx = DESIGN_RENDER_LAYER_SIDE * scaleY,
                 scale = transform.scale,
                 rotation = transform.rotation,
                 transform = transform,
@@ -1068,7 +1056,7 @@ private fun EditorLayer.toFrameSpec(
         }
 
         is PhotoLayer -> {
-            val baseSize = photoBaseSize(crop?.ratio)
+            val baseSize = photoRenderSize(crop?.ratio)
             scaledFrame(
                 layerId = id,
                 offsetXPx = transform.offsetX * scaleX,
@@ -1264,27 +1252,6 @@ private fun textFrameMetrics(fontFamilyId: String): TextFrameMetrics {
             heightFactor = 1.6f,
             horizontalPaddingFactor = 1.25f,
             verticalPaddingFactor = 1.15f
-        )
-    }
-}
-
-private fun photoBaseSize(ratio: CropPresetRatio?): VisualSize {
-    val aspectRatio = when (ratio) {
-        CropPresetRatio.RATIO_9_16 -> 9f / 16f
-        CropPresetRatio.RATIO_3_4 -> 3f / 4f
-        CropPresetRatio.RATIO_2_3 -> 2f / 3f
-        CropPresetRatio.RATIO_1_1,
-        null -> 1f
-    }
-    return if (aspectRatio >= 1f) {
-        VisualSize(
-            width = BaseVisualSide,
-            height = BaseVisualSide / aspectRatio
-        )
-    } else {
-        VisualSize(
-            width = BaseVisualSide * aspectRatio,
-            height = BaseVisualSide
         )
     }
 }

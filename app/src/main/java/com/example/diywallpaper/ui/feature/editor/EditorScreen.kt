@@ -13,12 +13,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +31,10 @@ import androidx.compose.ui.unit.dp
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.domain.model.design.EditorTextPreset
+import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.TextLayer
+import com.example.diywallpaper.ui.feature.preview.device.SavedDesignDevicePreview
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
 import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
 
@@ -41,6 +47,7 @@ fun EditorScreen(
     onUndoClick: () -> Unit,
     onRedoClick: () -> Unit,
     onPreviewClick: () -> Unit,
+    onExitPreviewClick: () -> Unit,
     onNextClick: () -> Unit,
     onToolSelected: (EditorTool) -> Unit,
     onDismissToolSheet: () -> Unit,
@@ -74,6 +81,38 @@ fun EditorScreen(
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
+    val previewProject = uiState.toPreviewProject()
+
+    if (uiState.isPreviewMode && previewProject != null) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            SavedDesignDevicePreview(
+                project = previewProject,
+                isChromeVisible = true,
+                modifier = Modifier.fillMaxSize()
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, end = 16.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f)
+            ) {
+                IconButton(onClick = onExitPreviewClick) {
+                    Icon(
+                        imageVector = Icons.Outlined.VisibilityOff,
+                        contentDescription = stringResource(id = R.string.editor_preview),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+        return
+    }
 
     Scaffold(
         modifier = modifier.statusBarsPadding().navigationBarsPadding(),
@@ -204,6 +243,7 @@ private fun EditorScreenPreview() {
             onUndoClick = {},
             onRedoClick = {},
             onPreviewClick = {},
+            onExitPreviewClick = {},
             onNextClick = {},
             onToolSelected = {},
             onDismissToolSheet = {},
@@ -226,4 +266,22 @@ private fun EditorScreenPreview() {
             onApplyBrush = { _, _, _ -> }
         )
     }
+}
+
+private fun EditorUiState.toPreviewProject(): EditorProject? {
+    val canvasSpec = canvas ?: return null
+    val backgroundSpec = background ?: return null
+    val now = System.currentTimeMillis()
+    return EditorProject(
+        id = projectId ?: "editor_preview",
+        source = EditorProjectSource.Scratch,
+        canvas = canvasSpec,
+        background = backgroundSpec,
+        layers = layers,
+        placeholders = placeholders,
+        selectedLayerId = selectedLayerId,
+        createdAt = now,
+        updatedAt = now,
+        schemaVersion = 1
+    )
 }
