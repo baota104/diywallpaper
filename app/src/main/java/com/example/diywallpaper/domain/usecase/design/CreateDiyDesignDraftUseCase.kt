@@ -3,6 +3,9 @@ package com.example.diywallpaper.domain.usecase.design
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.data.remote.dto.resolveDiyBackgroundValue
 import com.example.diywallpaper.domain.model.DiyBackgroundValue
+import com.example.diywallpaper.domain.model.DiyElement
+import com.example.diywallpaper.domain.model.DiyElementType
+import com.example.diywallpaper.domain.model.PhotoPlaceholder
 import com.example.diywallpaper.domain.model.DiyTemplate
 import com.example.diywallpaper.domain.model.DiyTemplateType
 import com.example.diywallpaper.domain.model.DiyTemplateData
@@ -53,7 +56,7 @@ internal fun DiyTemplate.toEditorProject(
                 height = templateData.height,
                 background = backgroundValue.toTemplateBackgroundSnapshot(),
                 elements = templateData.elements.map { element ->
-                    val placeholder = templateData.placeholders.firstOrNull { it.zIndex == element.zIndex }
+                    val placeholder = templateData.placeholders.matchFor(element)
                     DiyTemplateElementSnapshot(
                         id = buildElementSnapshotId(element),
                         type = element.type.name,
@@ -69,7 +72,7 @@ internal fun DiyTemplate.toEditorProject(
                         fontColor = element.fontColor,
                         fontFamilyIndex = element.fontFamilyIndex,
                         maskPathOrUrl = element.maskUrl ?: placeholder?.maskUrl,
-                        previewPathOrUrl = placeholder?.previewUrl
+                        previewPathOrUrl = element.previewPathOrUrl(placeholder)
                     )
                 }
             )
@@ -113,6 +116,25 @@ private fun DiyBackgroundValue.toEditorBackground(): EditorBackground = when (th
         imageUrl = url
     )
     DiyBackgroundValue.Empty -> EditorBackground.SolidColor("#FFFFFF")
+}
+
+private fun DiyElement.previewPathOrUrl(placeholder: PhotoPlaceholder?): String? {
+    return if (type == DiyElementType.IMAGE) {
+        placeholder?.previewUrl ?: assetUrl ?: srcName.takeIf { it.isNotBlank() }
+    } else {
+        placeholder?.previewUrl
+    }
+}
+
+private fun List<PhotoPlaceholder>.matchFor(element: DiyElement): PhotoPlaceholder? {
+    return firstOrNull { placeholder ->
+        placeholder.zIndex == element.zIndex &&
+            placeholder.x == element.x &&
+            placeholder.y == element.y &&
+            placeholder.width == element.width &&
+            placeholder.height == element.height &&
+            placeholder.rotation == element.rotation
+    } ?: firstOrNull { it.zIndex == element.zIndex }
 }
 
 private fun DiyBackgroundValue.toTemplateBackgroundSnapshot() = when (this) {

@@ -1,6 +1,7 @@
 package com.example.diywallpaper.ui.feature.dashboard.collection
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -316,7 +318,9 @@ private fun CollectionFilterChip(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             color = if (isSelected) SkyBlue else TextPrimary,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                .basicMarquee(iterations = Int.MAX_VALUE)
         )
     }
 }

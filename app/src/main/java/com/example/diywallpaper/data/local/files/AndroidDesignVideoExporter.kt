@@ -8,6 +8,7 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
+import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
 import android.graphics.Movie
 import android.graphics.Paint
@@ -69,6 +70,7 @@ import com.example.diywallpaper.domain.repository.DesignVideoExporter
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.nio.ByteBuffer
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -306,11 +308,14 @@ class AndroidDesignVideoExporter @Inject constructor(
         frameTimeMs: Long
     ) {
         val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
-        val rect = RectF(
-            transform.offsetX,
-            transform.offsetY,
-            transform.offsetX + element.width * transform.scale,
-            transform.offsetY + element.height * transform.scale
+        val rect = centerScaledLayerRect(
+            offsetX = transform.offsetX,
+            offsetY = transform.offsetY,
+            width = element.width,
+            height = element.height,
+            scale = transform.scale,
+            scaleX = 1f,
+            scaleY = 1f
         )
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = parseColor(element.fontColor, Color.BLACK)
@@ -333,11 +338,14 @@ class AndroidDesignVideoExporter @Inject constructor(
     ) {
         val bitmap = assets.bitmaps[element.assetUrl] ?: return
         val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
-        val rect = RectF(
-            transform.offsetX,
-            transform.offsetY,
-            transform.offsetX + element.width * transform.scale,
-            transform.offsetY + element.height * transform.scale
+        val rect = centerScaledLayerRect(
+            offsetX = transform.offsetX,
+            offsetY = transform.offsetY,
+            width = element.width,
+            height = element.height,
+            scale = transform.scale,
+            scaleX = 1f,
+            scaleY = 1f
         )
         canvas.save()
         canvas.rotate(transform.rotation, rect.centerX(), rect.centerY())
@@ -375,11 +383,14 @@ class AndroidDesignVideoExporter @Inject constructor(
             val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
             val baseWidth = element.contentBaseWidth ?: element.width
             val baseHeight = element.contentBaseHeight ?: element.height
-            val contentRect = RectF(
-                transform.offsetX,
-                transform.offsetY,
-                transform.offsetX + baseWidth * transform.scale,
-                transform.offsetY + baseHeight * transform.scale
+            val contentRect = centerScaledLayerRect(
+                offsetX = transform.offsetX,
+                offsetY = transform.offsetY,
+                width = baseWidth,
+                height = baseHeight,
+                scale = transform.scale,
+                scaleX = 1f,
+                scaleY = 1f
             )
             canvas.rotate(transform.rotation - element.rotation, contentRect.centerX(), contentRect.centerY())
             drawBitmapCrop(canvas, previewBitmap, element.crop, contentRect, alpha = 1f)

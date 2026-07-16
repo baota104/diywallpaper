@@ -17,7 +17,7 @@ fun DiyTemplateElementSnapshot.proceduralAnimatedTransform(
     enabled: Boolean
 ): LayerTransform {
     val base = diyRenderTransform()
-    if (!enabled) return base
+    if (!enabled || isFixedDiyPictureElement()) return base
 
     val phase = proceduralPhase(templateId, id)
     val seconds = timeMs / 1000f
@@ -38,6 +38,11 @@ fun DiyTemplateElementSnapshot.proceduralAnimatedTransform(
 fun DiyTemplateElementSnapshot.isDiyImageElement(): Boolean {
     return type.equals("IMAGE", ignoreCase = true) ||
         type.equals("Image", ignoreCase = true)
+}
+
+fun DiyTemplateElementSnapshot.isFixedDiyPictureElement(): Boolean {
+    return type.equals("PICTURE", ignoreCase = true) ||
+        type.equals("Picture", ignoreCase = true)
 }
 
 private fun DiyTemplateElementSnapshot.proceduralProfile(): ProceduralProfile {
