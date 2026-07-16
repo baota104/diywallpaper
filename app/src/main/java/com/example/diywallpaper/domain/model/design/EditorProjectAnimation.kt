@@ -10,3 +10,8 @@ fun EditorProject.hasAnimatedContent(): Boolean {
         }
     }
 }
+
+fun EditorProject.requiresLiveExport(): Boolean {
+    val diySource = source as? EditorProjectSource.Diy
+    return hasAnimatedContent() || diySource?.isLive == true
+}

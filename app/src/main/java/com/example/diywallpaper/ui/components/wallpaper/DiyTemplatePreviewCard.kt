@@ -25,12 +25,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.DiyTemplate
-import com.example.diywallpaper.domain.model.DiyTemplateType
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.diywallpaper.ui.theme.PrimaryGradient
 
 @Composable
@@ -42,20 +36,6 @@ fun DiyTemplatePreviewCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val shouldPlayAnimation = isAnimationActive &&
-        template.type == DiyTemplateType.DIY_LIVE &&
-        !template.diyAnimationUrl.isNullOrBlank()
-    val compositionResult = if (shouldPlayAnimation) {
-        rememberLottieComposition(LottieCompositionSpec.Url(template.diyAnimationUrl.orEmpty()))
-    } else {
-        rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.ic_select_lg))
-    }
-    val progressState = animateLottieCompositionAsState(
-        composition = compositionResult.value,
-        iterations = LottieConstants.IterateForever,
-        isPlaying = shouldPlayAnimation && compositionResult.value != null
-    )
-
     Surface(
         modifier = modifier
             .aspectRatio(0.7f)
@@ -65,29 +45,19 @@ fun DiyTemplatePreviewCard(
         shadowElevation = 8.dp
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (shouldPlayAnimation && compositionResult.value != null) {
-                LottieAnimation(
-                    composition = compositionResult.value,
-                    progress = { progressState.value },
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                AsyncImage(
-                    model = template.thumbUrl,
-                    contentDescription = stringResource(id = R.string.home_wallpaper_preview),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-
+            AsyncImage(
+                model = template.thumbUrl,
+                contentDescription = stringResource(id = R.string.home_wallpaper_preview),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(10.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(Brush.linearGradient(PrimaryGradient))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -109,20 +79,6 @@ fun DiyTemplatePreviewCard(
                     .padding(10.dp),
                 isSelected = isFavorite,
                 onClick = onFavoriteClick
-            )
-
-            Text(
-                text = stringResource(id = R.string.home_create_from_scratch),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(12.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
             )
         }
     }

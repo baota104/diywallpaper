@@ -7,7 +7,7 @@ import javax.inject.Singleton
 class NativeEndpointProvider @Inject constructor() : EndpointProvider {
     override fun getDataFullUrl(): String = runCatching {
         NativeConfig.getDataFullUrl()
-    }.getOrDefault("https://cdn.leansoft-ai.com/ls36-diy-wallpaper/json/data_20260227_1339.json")
+    }.getOrDefault("https://cdn.leansoft-ai.com/ls36-diy-wallpaper/json/data_20261903_0929.json")
 
     override fun getBgCreateUrl(): String = runCatching {
         NativeConfig.getBgCreateUrl()

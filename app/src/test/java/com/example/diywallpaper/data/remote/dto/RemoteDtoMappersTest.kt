@@ -104,6 +104,7 @@ class RemoteDtoMappersTest {
                 RemoteItemDto(
                     id = 1,
                     type = "diy-live",
+                    dataZip = "https://cdn/1.zip",
                     diyData = "https://cdn/data.json",
                     diyAnimation = "https://cdn/animation.json"
                 )
@@ -114,6 +115,7 @@ class RemoteDtoMappersTest {
         val diyTemplates = category.toDiyTemplates()
         assertEquals(1, diyTemplates.size)
         assertEquals(DiyTemplateType.DIY_LIVE, diyTemplates.first().type)
+        assertEquals("https://cdn/1.zip", diyTemplates.first().dataZipUrl)
     }
 
     @Test

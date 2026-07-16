@@ -65,6 +65,16 @@ fun EditorScreen(
     onOpenLayers: () -> Unit,
     onMoveLayer: (layerId: String, targetIndex: Int) -> Unit,
     onSelectLayer: (String?) -> Unit,
+    onDiySlotSelect: (String?) -> Unit,
+    onDiySlotClick: (String) -> Unit,
+    onDiySlotTransform: (
+        slotId: String,
+        panXDelta: Float,
+        panYDelta: Float,
+        scaleMultiplier: Float,
+        rotationDelta: Float
+    ) -> Unit,
+    onDiySlotRemove: (String) -> Unit,
     onTransformLayer: (
         layerId: String,
         offsetXDelta: Float,
@@ -183,6 +193,10 @@ fun EditorScreen(
                 EditorCanvas(
                     uiState = uiState,
                     onSelectLayer = onSelectLayer,
+                    onDiySlotSelect = onDiySlotSelect,
+                    onDiySlotClick = onDiySlotClick,
+                    onDiySlotTransform = onDiySlotTransform,
+                    onDiySlotRemove = onDiySlotRemove,
                     onTransformLayer = onTransformLayer,
                     onCommitCanvasStroke = onCommitCanvasStroke,
                     onRemoveLayer = onRemoveSelectedLayer,
@@ -323,6 +337,10 @@ private fun EditorScreenPreview() {
             onOpenLayers = {},
             onMoveLayer = { _, _ -> },
             onSelectLayer = {},
+            onDiySlotSelect = {},
+            onDiySlotClick = {},
+            onDiySlotTransform = { _, _, _, _, _ -> },
+            onDiySlotRemove = {},
             onTransformLayer = { _, _, _, _, _ -> },
             onCommitCanvasStroke = {},
             onApplySolidBackground = {},
@@ -348,7 +366,18 @@ private fun EditorUiState.toPreviewProject(): EditorProject? {
     val now = System.currentTimeMillis()
     return EditorProject(
         id = projectId ?: "editor_preview",
-        source = EditorProjectSource.Scratch,
+        source = if (sourceType == com.example.diywallpaper.domain.model.design.DesignSourceType.DIY_TEMPLATE &&
+            templateSnapshot != null
+        ) {
+            EditorProjectSource.Diy(
+                templateId = diyTemplateId ?: projectId ?: "editor_preview_diy",
+                templateSnapshot = templateSnapshot,
+                isLive = isDiyLive,
+                diyAnimationUrl = diyAnimationUrl
+            )
+        } else {
+            EditorProjectSource.Scratch
+        },
         canvas = canvasSpec,
         background = backgroundSpec,
         layers = layers,

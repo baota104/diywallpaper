@@ -65,6 +65,8 @@ fun EditorRoute(
             }.onSuccess { localPath ->
                 onOpenImportPhotoCrop(localPath)
             }
+        } else {
+            viewModel.consumePendingDiySlotImageImport()
         }
     }
     val runtimeProjectId = rememberSaveable(args.sourceType, args.categoryId, args.initialItemId) {
@@ -76,6 +78,12 @@ fun EditorRoute(
 
         if (existingDesignId != null) {
             viewModel.loadDesign(existingDesignId)
+        } else if (args.sourceType == com.example.diywallpaper.domain.model.preview.PreviewSourceType.DIY) {
+            viewModel.loadDiyTemplateDraft(
+                templateId = args.initialItemId,
+                projectId = runtimeProjectId,
+                title = starterTitle(args)
+            )
         } else {
             viewModel.startNewProject(
                 project = createStarterProject(
@@ -108,19 +116,29 @@ fun EditorRoute(
         pendingImportPhotoRatio
     ) {
         val photoUri = pendingImportPhotoUri ?: return@LaunchedEffect
+        val pendingDiySlotId = uiState.pendingDiyElementImportId
         val ratio = pendingImportPhotoRatio
             ?.let { runCatching { CropPresetRatio.valueOf(it) }.getOrNull() }
             ?: CropPresetRatio.RATIO_9_16
-        viewModel.addPhotoLayer(
-            localPath = photoUri,
-            crop = CropSpec(
-                normalizedLeft = pendingImportPhotoLeft.toNormalizedOrDefault(0f),
-                normalizedTop = pendingImportPhotoTop.toNormalizedOrDefault(0f),
-                normalizedRight = pendingImportPhotoRight.toNormalizedOrDefault(1f),
-                normalizedBottom = pendingImportPhotoBottom.toNormalizedOrDefault(1f),
-                ratio = ratio
-            )
+        val crop = CropSpec(
+            normalizedLeft = pendingImportPhotoLeft.toNormalizedOrDefault(0f),
+            normalizedTop = pendingImportPhotoTop.toNormalizedOrDefault(0f),
+            normalizedRight = pendingImportPhotoRight.toNormalizedOrDefault(1f),
+            normalizedBottom = pendingImportPhotoBottom.toNormalizedOrDefault(1f),
+            ratio = ratio
         )
+        if (pendingDiySlotId != null) {
+            viewModel.setDiySlotImage(
+                slotId = pendingDiySlotId,
+                localPath = photoUri,
+                crop = crop
+            )
+        } else {
+            viewModel.addPhotoLayer(
+                localPath = photoUri,
+                crop = crop
+            )
+        }
         onImportPhotoConsumed()
     }
 
@@ -155,6 +173,16 @@ fun EditorRoute(
         onOpenLayers = { viewModel.setActiveTool(EditorTool.LAYERS) },
         onMoveLayer = viewModel::moveLayer,
         onSelectLayer = viewModel::selectLayer,
+        onDiySlotSelect = viewModel::selectDiySlotImage,
+        onDiySlotClick = { slotId ->
+            if (viewModel.beginDiySlotImageImport(slotId)) {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            }
+        },
+        onDiySlotTransform = viewModel::updateDiySlotImageTransform,
+        onDiySlotRemove = viewModel::removeDiySlotImage,
         onTransformLayer = viewModel::updateLayerTransform,
         onCommitCanvasStroke = viewModel::commitCanvasStroke,
         onApplySolidBackground = viewModel::applySolidBackground,
@@ -166,6 +194,7 @@ fun EditorRoute(
             )
         },
         onImportPhoto = {
+            viewModel.consumePendingDiySlotImageImport()
             photoPickerLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )

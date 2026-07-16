@@ -19,6 +19,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
@@ -35,15 +36,18 @@ import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.CropSpec
+import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorLayer
 import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.EditorTextAlign
 import com.example.diywallpaper.domain.model.design.GeneratedDesignAssets
 import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoLayer
+import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
 import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StickerTrailRotationMode
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
@@ -54,6 +58,7 @@ import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
+import com.example.diywallpaper.domain.model.design.renderSize
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.domain.repository.DesignAssetExporter
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
@@ -70,7 +75,7 @@ import okhttp3.Request
 
 @Singleton
 class AndroidDesignAssetExporter @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val designFileStore: DesignFileStore,
     private val okHttpClient: OkHttpClient
 ) : DesignAssetExporter {
@@ -180,6 +185,15 @@ class AndroidDesignAssetExporter @Inject constructor(
             )
 
             val eraseColor = resolveEraseColor(project.background)
+            val diySource = project.source as? EditorProjectSource.Diy
+            if (diySource != null) {
+                drawDiyTemplateContent(
+                    canvas = canvas,
+                    project = project,
+                    source = diySource,
+                    assetCache = assetCache
+                )
+            }
             project.layers
                 .filterNot(EditorLayer::isHidden)
                 .sortedBy(EditorLayer::zIndex)
@@ -187,7 +201,11 @@ class AndroidDesignAssetExporter @Inject constructor(
                     when (layer) {
                         is TextLayer -> drawTextLayer(canvas, layer)
                         is StickerLayer -> drawStickerLayer(canvas, layer, assetCache)
-                        is PhotoLayer -> drawPhotoLayer(canvas, layer, assetCache)
+                        is PhotoLayer -> drawPhotoLayer(
+                            canvas = canvas,
+                            layer = layer,
+                            assetCache = assetCache
+                        )
                         is DrawLayer -> {
                             if (layer.drawData.isBrushStackRenderable()) {
                                 drawBrushStrokeStack(
@@ -204,6 +222,135 @@ class AndroidDesignAssetExporter @Inject constructor(
                 }
         } finally {
             canvas.restore()
+        }
+    }
+
+    private suspend fun drawDiyTemplateContent(
+        canvas: Canvas,
+        project: EditorProject,
+        source: EditorProjectSource.Diy,
+        assetCache: MutableMap<String, Bitmap?>
+    ) {
+        source.templateSnapshot.elements
+            .sortedBy { it.zIndex }
+            .forEach { element ->
+                when {
+                    element.isTextElement() -> {
+                        drawDiyTemplateText(canvas, element)
+                    }
+
+                    element.isAssetElement() -> {
+                        drawDiyTemplatePicture(canvas, element, assetCache)
+                    }
+
+                    element.isImageElement() -> drawDiyImageElement(canvas, element, assetCache)
+                }
+            }
+    }
+
+    private fun drawDiyTemplateText(
+        canvas: Canvas,
+        element: DiyTemplateElementSnapshot
+    ) {
+        val transform = element.editTransform()
+        val rect = RectF(
+            transform.offsetX,
+            transform.offsetY,
+            transform.offsetX + element.width * transform.scale,
+            transform.offsetY + element.height * transform.scale
+        )
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = parseColor(element.fontColor, Color.BLACK)
+            textSize = (element.fontSize * transform.scale).coerceAtLeast(1f)
+            typeface = Typeface.DEFAULT
+        }
+        canvas.save()
+        canvas.rotate(transform.rotation, rect.centerX(), rect.centerY())
+        canvas.drawText(element.title, rect.left, rect.top + paint.textSize, paint)
+        canvas.restore()
+    }
+
+    private suspend fun drawDiyTemplatePicture(
+        canvas: Canvas,
+        element: DiyTemplateElementSnapshot,
+        assetCache: MutableMap<String, Bitmap?>
+    ) {
+        val bitmap = loadBitmap(element.assetUrl.orEmpty(), assetCache, element.width.roundToInt(), element.height.roundToInt())
+            ?: return
+        val transform = element.editTransform()
+        val rect = RectF(
+            transform.offsetX,
+            transform.offsetY,
+            transform.offsetX + element.width * transform.scale,
+            transform.offsetY + element.height * transform.scale
+        )
+        canvas.save()
+        canvas.rotate(transform.rotation, rect.centerX(), rect.centerY())
+        drawBitmapFit(canvas, bitmap, rect, alpha = 1f)
+        canvas.restore()
+    }
+
+    private suspend fun drawDiyImageElement(
+        canvas: Canvas,
+        element: DiyTemplateElementSnapshot,
+        assetCache: MutableMap<String, Bitmap?>
+    ) {
+        val previewSource = element.localImagePath?.takeUnless { it.isBlank() }
+            ?: element.previewPathOrUrl?.takeUnless { it.isBlank() }
+            ?: return
+        val previewBitmap = loadBitmap(
+            model = previewSource,
+            assetCache = assetCache,
+            width = element.width.roundToInt().coerceAtLeast(1),
+            height = element.height.roundToInt().coerceAtLeast(1)
+        ) ?: return
+        val placeholderRect = RectF(
+            element.x,
+            element.y,
+            element.x + element.width,
+            element.y + element.height
+        )
+        val maskBitmap = element.maskPathOrUrl?.let {
+            loadBitmap(
+                model = it,
+                assetCache = assetCache,
+                width = element.width.roundToInt().coerceAtLeast(1),
+                height = element.height.roundToInt().coerceAtLeast(1)
+            )
+        }
+        val checkpoint = maskBitmap?.let {
+            canvas.saveLayer(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), null)
+        }
+        canvas.save()
+        canvas.rotate(element.rotation, placeholderRect.centerX(), placeholderRect.centerY())
+        canvas.clipRect(placeholderRect)
+        if (element.localImagePath.isNullOrBlank()) {
+            drawBitmapCover(canvas, previewBitmap, placeholderRect, null)
+        } else {
+            val transform = element.editTransform()
+            val baseWidth = element.contentBaseWidth ?: element.width
+            val baseHeight = element.contentBaseHeight ?: element.height
+            val contentRect = RectF(
+                transform.offsetX,
+                transform.offsetY,
+                transform.offsetX + baseWidth * transform.scale,
+                transform.offsetY + baseHeight * transform.scale
+            )
+            canvas.rotate(transform.rotation - element.rotation, contentRect.centerX(), contentRect.centerY())
+            drawBitmapCrop(canvas, previewBitmap, element.crop, contentRect, alpha = 1f)
+        }
+        canvas.restore()
+
+        if (maskBitmap != null && checkpoint != null) {
+            val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            }
+            canvas.save()
+            canvas.rotate(element.rotation, placeholderRect.centerX(), placeholderRect.centerY())
+            canvas.drawBitmap(maskBitmap, null, placeholderRect, maskPaint)
+            canvas.restore()
+            maskPaint.xfermode = null
+            canvas.restoreToCount(checkpoint)
         }
     }
 
@@ -264,7 +411,7 @@ class AndroidDesignAssetExporter @Inject constructor(
     ) {
         val source = layer.animatedAssetPathOrUrl ?: layer.assetPathOrUrl
         val bitmap = loadBitmap(source, assetCache, 1024, 1024) ?: return
-        val size = stickerRenderSize()
+        val size = layer.renderSize()
         val rect = centerScaledLayerRect(
             offsetX = layer.transform.offsetX,
             offsetY = layer.transform.offsetY,
@@ -914,6 +1061,50 @@ class AndroidDesignAssetExporter @Inject constructor(
     }
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
+
+    private fun DiyTemplateElementSnapshot.isTextElement(): Boolean {
+        return type.equals("TEXT", ignoreCase = true) ||
+            type.equals("Text", ignoreCase = true)
+    }
+
+    private fun DiyTemplateElementSnapshot.isAssetElement(): Boolean {
+        return !isImageElement() &&
+            !isTextElement() &&
+            !assetUrl.isNullOrBlank()
+    }
+
+    private fun DiyTemplateElementSnapshot.isImageElement(): Boolean {
+        return type.equals("IMAGE", ignoreCase = true) ||
+            type.equals("Image", ignoreCase = true)
+    }
+
+    private fun DiyTemplateElementSnapshot.matchPlaceholder(
+        placeholders: List<PhotoPlaceholderLayer>
+    ): PhotoPlaceholderLayer? {
+        return placeholders.firstOrNull { placeholder ->
+            placeholder.zIndex == zIndex &&
+                placeholder.x == x &&
+                placeholder.y == y &&
+                placeholder.width == width &&
+            placeholder.height == height
+        } ?: placeholders.firstOrNull { it.zIndex == zIndex }
+    }
+
+    private fun DiyTemplateElementSnapshot.editTransform(): LayerTransform {
+        if (isFixedTemplateElement()) {
+            return LayerTransform(x, y, 1f, rotation)
+        }
+        return if (isImageElement() && localImagePath != null) {
+            contentTransform ?: LayerTransform(x, y, 1f, rotation)
+        } else {
+            transform ?: LayerTransform(x, y, 1f, rotation)
+        }
+    }
+
+    private fun DiyTemplateElementSnapshot.isFixedTemplateElement(): Boolean {
+        return type.equals("PICTURE", ignoreCase = true) ||
+            type.equals("Picture", ignoreCase = true)
+    }
 
     private fun DrawLayerData.isBrushStackRenderable(): Boolean {
         return this is DrawLayerData.FreeStroke ||

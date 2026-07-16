@@ -117,19 +117,18 @@ fun PreviewCarouselContent(
 
     Scaffold(
         modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Surface(
-                color = MaterialTheme.colorScheme.background,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 10.dp,
-                shape = RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp)
+                shape = RoundedCornerShape(bottomStart = 15.dp, bottomEnd = 15.dp)
             ) {
                 CenterAlignedTopAppBar(
                     title = {
                         Text(
                             text = stringResource(id = R.string.preview_title),
-                            style = MaterialTheme.typography.displayMedium,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
                     },

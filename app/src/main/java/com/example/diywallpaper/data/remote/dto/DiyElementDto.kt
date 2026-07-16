@@ -11,5 +11,10 @@ data class DiyElementDto(
     val height: Float = 0f,
     val angle: Float = 0f,
     val layoutIndex: Int = Int.MAX_VALUE,
-    val srcName: String = ""
+    val srcName: String = "",
+    val title: String = "",
+    val fontSize: Float = 50f,
+    val fontColor: String = "#000000",
+    val fontFamilyIndex: Int = 0,
+    val maskName: String = ""
 )

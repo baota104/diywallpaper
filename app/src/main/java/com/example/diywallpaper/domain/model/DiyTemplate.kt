@@ -6,6 +6,7 @@ data class DiyTemplate(
     val rank: Int,
     val thumbUrl: String,
     val diyDataUrl: String,
+    val dataZipUrl: String? = null,
     val diyAnimationUrl: String?,
     val isFavorite: Boolean
 )

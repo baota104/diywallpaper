@@ -81,8 +81,9 @@ import com.example.diywallpaper.core.render.mapLayerBoundsToTargetCorners
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
-import com.example.diywallpaper.domain.model.design.DESIGN_RENDER_LAYER_SIDE
+import com.example.diywallpaper.domain.model.design.DesignSourceType
 import com.example.diywallpaper.domain.model.design.DesignRawBounds
+import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -90,14 +91,16 @@ import com.example.diywallpaper.domain.model.design.EditorLayer
 import com.example.diywallpaper.domain.model.design.EditorTextAlign
 import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoLayer
-import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
 import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.renderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
+import com.example.diywallpaper.ui.feature.editor.diy.DiySlotOverlay
+import com.example.diywallpaper.ui.feature.editor.diy.DiyTemplateUnderlay
 import com.example.diywallpaper.ui.theme.PlusJakartaSans
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -109,6 +112,16 @@ import kotlin.math.sqrt
 fun EditorCanvas(
     uiState: EditorUiState,
     onSelectLayer: (String?) -> Unit,
+    onDiySlotSelect: (String?) -> Unit,
+    onDiySlotClick: (String) -> Unit,
+    onDiySlotTransform: (
+        slotId: String,
+        panXDelta: Float,
+        panYDelta: Float,
+        scaleMultiplier: Float,
+        rotationDelta: Float
+    ) -> Unit,
+    onDiySlotRemove: (String) -> Unit,
     onTransformLayer: (
         layerId: String,
         offsetXDelta: Float,
@@ -190,6 +203,18 @@ fun EditorCanvas(
             val drawEnabled = uiState.openedToolSheet == EditorTool.BRUSH_DRAW ||
                 uiState.openedToolSheet == EditorTool.BRUSH_ERASE ||
                 uiState.openedToolSheet == EditorTool.TEXT_BRUSH
+            val isDiyTemplateCanvas = uiState.sourceType == DesignSourceType.DIY_TEMPLATE &&
+                uiState.templateSnapshot != null
+            val selectedDiyFrameId = uiState.selectedDiyElementId?.toDiyFrameId()
+            val selectedGestureFrameId = selectedDiyFrameId ?: uiState.selectedLayerId
+            val renderDiyElements = if (isDiyTemplateCanvas) {
+                uiState.templateSnapshot?.elements.orEmpty().map { element ->
+                    val frameId = element.id.toDiyFrameId()
+                    element.withPreviewTransform(previewTransforms[frameId])
+                }
+            } else {
+                emptyList()
+            }
             val activeBrushStroke = activePoints.takeIf {
                 drawEnabled &&
                 it.isNotEmpty() &&
@@ -226,15 +251,14 @@ fun EditorCanvas(
                 modifier = Modifier.fillMaxSize()
             )
 
-            uiState.placeholders
-                .sortedBy { it.zIndex }
-                .forEach { placeholder ->
-                    PlaceholderOverlay(
-                        placeholder = placeholder,
+            if (isDiyTemplateCanvas) {
+                    DiyTemplateUnderlay(
+                        elements = renderDiyElements,
                         scaleX = scaleX,
-                        scaleY = scaleY
-                    )
-                }
+                        scaleY = scaleY,
+                        modifier = Modifier.fillMaxSize()
+                )
+            }
 
             uiState.layers
                 .sortedBy { it.zIndex }
@@ -252,6 +276,8 @@ fun EditorCanvas(
                         is StickerLayer -> ImageLayerItem(
                             layerId = layer.id,
                             imageModel = layer.assetPathOrUrl,
+                            renderWidth = layer.renderSize().width,
+                            renderHeight = layer.renderSize().height,
                             transform = layer.transform,
                             scaleX = scaleX,
                             scaleY = scaleY,
@@ -372,16 +398,42 @@ fun EditorCanvas(
                             drawBounds = drawRenderBounds[layer.id]
                         )
                     }
+                val diySlotFrames = if (isDiyTemplateCanvas) {
+                    renderDiyElements.mapNotNull { element ->
+                        element.toFrameSpec(element.id.toDiyFrameId(), scaleX, scaleY)
+                    }
+                } else {
+                    emptyList()
+                }
+                val gestureFrames = layerFrames + diySlotFrames
                 EditorLayerGestureOverlay(
-                    frames = layerFrames,
-                    selectedLayerId = uiState.selectedLayerId,
-                    onSelectLayer = onSelectLayer,
+                    frames = gestureFrames,
+                    selectedLayerId = selectedGestureFrameId,
+                    onSelectLayer = { frameId ->
+                        if (frameId == null) {
+                            onSelectLayer(null)
+                        } else if (frameId.isDiyFrameId()) {
+                            onSelectLayer(null)
+                            onDiySlotSelect(frameId.toDiySlotId())
+                        } else {
+                            onSelectLayer(frameId)
+                        }
+                    },
                     onPreviewTransform = { layerId, transform ->
                         previewTransforms[layerId] = transform
                     },
                     onCommitTransform = { layerId, baseTransform, committedTransform ->
                         previewTransforms.remove(layerId)
-                        commitTransformDelta(layerId, baseTransform, committedTransform, onTransformLayer)
+                        if (layerId.isDiyFrameId()) {
+                            commitTransformDelta(
+                                layerId.toDiySlotId(),
+                                baseTransform,
+                                committedTransform,
+                                onDiySlotTransform
+                            )
+                        } else {
+                            commitTransformDelta(layerId, baseTransform, committedTransform, onTransformLayer)
+                        }
                     },
                     onCancelTransform = { layerId ->
                         previewTransforms.remove(layerId)
@@ -389,6 +441,48 @@ fun EditorCanvas(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+
+            if (isDiyTemplateCanvas && !drawEnabled) {
+                DiySlotOverlay(
+                    elements = renderDiyElements,
+                    scaleX = scaleX,
+                    scaleY = scaleY,
+                    onSlotClick = onDiySlotClick,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            uiState.selectedDiyElementId
+                ?.let { selectedElementId ->
+                    val frameId = selectedElementId.toDiyFrameId()
+                    val element = renderDiyElements.firstOrNull { it.id == selectedElementId }
+                    element?.toFrameSpec(frameId, scaleX, scaleY)?.let { frame ->
+                        SelectionOverlay(
+                            frame = frame,
+                            showChangePhoto = element.isDiyImageElement() && element.localImagePath != null,
+                            onSelect = { onDiySlotSelect(selectedElementId) },
+                            onRemove = {
+                                if (element.isDiyImageElement() && element.localImagePath != null) {
+                                    onDiySlotRemove(selectedElementId)
+                                }
+                            },
+                            onChangePhoto = { onDiySlotClick(selectedElementId) },
+                            onPreviewTransform = { previewTransforms[frameId] = it },
+                            onCommitTransform = { committedTransform ->
+                                previewTransforms.remove(frameId)
+                                commitTransformDelta(
+                                    selectedElementId,
+                                    element.editTransform(),
+                                    committedTransform,
+                                    onDiySlotTransform
+                                )
+                            },
+                            onCancelTransform = {
+                                previewTransforms.remove(frameId)
+                            }
+                        )
+                    }
+                }
 
             uiState.layers
                 .firstOrNull { it.id == uiState.selectedLayerId }
@@ -405,8 +499,10 @@ fun EditorCanvas(
                     )?.let { frame ->
                         SelectionOverlay(
                             frame = frame,
+                            showChangePhoto = false,
                             onSelect = { onSelectLayer(frame.layerId) },
                             onRemove = onRemoveLayer,
+                            onChangePhoto = {},
                             onPreviewTransform = { previewTransforms[selectedLayer.id] = it },
                             onCommitTransform = { committedTransform ->
                                 previewTransforms.remove(selectedLayer.id)
@@ -488,44 +584,6 @@ private fun EmptyCanvasHint(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PlaceholderOverlay(
-    placeholder: PhotoPlaceholderLayer,
-    scaleX: Float,
-    scaleY: Float
-) {
-    val width = pxToDp(placeholder.width * scaleX)
-    val height = pxToDp(placeholder.height * scaleY)
-    val borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-    Box(
-        modifier = Modifier
-            .offset {
-                IntOffset(
-                    x = (placeholder.x * scaleX).roundToInt(),
-                    y = (placeholder.y * scaleY).roundToInt()
-                )
-            }
-            .size(width = width, height = height)
-            .drawBehind {
-                drawRoundRect(
-                    color = borderColor,
-                    size = size,
-                    cornerRadius = CornerRadius(24f, 24f),
-                    style = Stroke(width = 3f)
-                )
-            }
-            .background(Color(0x66D6F1FF), RoundedCornerShape(20.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.AddPhotoAlternate,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}
-
-@Composable
 private fun TextLayerItem(
     layer: TextLayer,
     scaleX: Float,
@@ -597,7 +655,8 @@ private fun PhotoLayerItem(
     isSelected: Boolean,
     previewTransform: LayerTransform?
 ) {
-    val renderTransform = previewTransform ?: layer.transform
+    val renderLayer = previewTransform?.let { layer.copy(transform = it) } ?: layer
+    val renderTransform = renderLayer.transform
     val baseSize = photoRenderSize(layer.crop?.ratio)
     Box(
         modifier = Modifier
@@ -618,43 +677,48 @@ private fun PhotoLayerItem(
                 alpha = renderTransform.alpha
             )
     ) {
-        val imageBitmap = remember(layer.localPath) {
-            BitmapFactory.decodeFile(layer.localPath)?.asImageBitmap()
-        }
-        if (imageBitmap != null) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val crop = layer.crop
-                val srcLeft = ((crop?.normalizedLeft ?: 0f).coerceIn(0f, 1f) * imageBitmap.width)
-                    .roundToInt()
-                val srcTop = ((crop?.normalizedTop ?: 0f).coerceIn(0f, 1f) * imageBitmap.height)
-                    .roundToInt()
-                val srcRight = ((crop?.normalizedRight ?: 1f).coerceIn(0f, 1f) * imageBitmap.width)
-                    .roundToInt()
-                    .coerceAtLeast(srcLeft + 1)
-                val srcBottom = ((crop?.normalizedBottom ?: 1f).coerceIn(0f, 1f) * imageBitmap.height)
-                    .roundToInt()
-                    .coerceAtLeast(srcTop + 1)
-                drawImage(
-                    image = imageBitmap,
-                    srcOffset = IntOffset(srcLeft, srcTop),
-                    srcSize = IntSize(
-                        width = (srcRight - srcLeft).coerceAtLeast(1),
-                        height = (srcBottom - srcTop).coerceAtLeast(1)
-                    ),
-                    dstSize = IntSize(
-                        width = size.width.roundToInt().coerceAtLeast(1),
-                        height = size.height.roundToInt().coerceAtLeast(1)
-                    )
+        PhotoLayerContent(layer = layer)
+    }
+}
+
+@Composable
+private fun PhotoLayerContent(layer: PhotoLayer) {
+    val imageBitmap = remember(layer.localPath) {
+        BitmapFactory.decodeFile(layer.localPath)?.asImageBitmap()
+    }
+    if (imageBitmap != null) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val crop = layer.crop
+            val srcLeft = ((crop?.normalizedLeft ?: 0f).coerceIn(0f, 1f) * imageBitmap.width)
+                .roundToInt()
+            val srcTop = ((crop?.normalizedTop ?: 0f).coerceIn(0f, 1f) * imageBitmap.height)
+                .roundToInt()
+            val srcRight = ((crop?.normalizedRight ?: 1f).coerceIn(0f, 1f) * imageBitmap.width)
+                .roundToInt()
+                .coerceAtLeast(srcLeft + 1)
+            val srcBottom = ((crop?.normalizedBottom ?: 1f).coerceIn(0f, 1f) * imageBitmap.height)
+                .roundToInt()
+                .coerceAtLeast(srcTop + 1)
+            drawImage(
+                image = imageBitmap,
+                srcOffset = IntOffset(srcLeft, srcTop),
+                srcSize = IntSize(
+                    width = (srcRight - srcLeft).coerceAtLeast(1),
+                    height = (srcBottom - srcTop).coerceAtLeast(1)
+                ),
+                dstSize = IntSize(
+                    width = size.width.roundToInt().coerceAtLeast(1),
+                    height = size.height.roundToInt().coerceAtLeast(1)
                 )
-            }
-        } else {
-            AsyncImage(
-                model = layer.localPath,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
             )
         }
+    } else {
+        AsyncImage(
+            model = layer.localPath,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
     }
 }
 
@@ -662,6 +726,8 @@ private fun PhotoLayerItem(
 private fun ImageLayerItem(
     layerId: String,
     imageModel: Any,
+    renderWidth: Float,
+    renderHeight: Float,
     transform: LayerTransform,
     scaleX: Float,
     scaleY: Float,
@@ -677,7 +743,10 @@ private fun ImageLayerItem(
                     y = (renderTransform.offsetY * scaleY).roundToInt()
                 )
             }
-            .size(pxToDp(DESIGN_RENDER_LAYER_SIDE * scaleX), pxToDp(DESIGN_RENDER_LAYER_SIDE * scaleY))
+            .size(
+                width = pxToDp(renderWidth * scaleX),
+                height = pxToDp(renderHeight * scaleY)
+            )
             .graphicsLayer(
                 rotationZ = renderTransform.rotation,
                 scaleX = renderTransform.scale,
@@ -1178,7 +1247,8 @@ private fun EditorLayerGestureOverlay(
                             val scaleMultiplier = vector.distance().coerceAtLeast(1f) / startHandleDistance
                             val rotationDelta = vector.angleDegrees() - startHandleAngle
                             baseTransform.copy(
-                                scale = (baseTransform.scale * scaleMultiplier).coerceIn(0.35f, 4f),
+                                scale = (baseTransform.scale * scaleMultiplier)
+                                    .coerceIn(targetFrame.minScale, targetFrame.maxScale),
                                 rotation = baseTransform.rotation + rotationDelta
                             )
                         }
@@ -1190,7 +1260,8 @@ private fun EditorLayerGestureOverlay(
                             transformBase.copy(
                                 offsetX = transformBase.offsetX + (centroid.x - centroidBase.x) / targetFrame.scaleX,
                                 offsetY = transformBase.offsetY + (centroid.y - centroidBase.y) / targetFrame.scaleY,
-                                scale = (transformBase.scale * scaleMultiplier).coerceIn(0.35f, 4f),
+                                scale = (transformBase.scale * scaleMultiplier)
+                                    .coerceIn(targetFrame.minScale, targetFrame.maxScale),
                                 rotation = transformBase.rotation + rotationDelta
                             )
                         }
@@ -1227,8 +1298,10 @@ private enum class GestureMode {
 @Composable
 private fun SelectionOverlay(
     frame: LayerFrameSpec,
+    showChangePhoto: Boolean,
     onSelect: () -> Unit,
     onRemove: () -> Unit,
+    onChangePhoto: () -> Unit,
     onPreviewTransform: (LayerTransform) -> Unit,
     onCommitTransform: (LayerTransform) -> Unit,
     onCancelTransform: () -> Unit
@@ -1258,6 +1331,20 @@ private fun SelectionOverlay(
                 .zIndex(2f),
             onClick = onRemove
         )
+        if (showChangePhoto) {
+            OverlayHandle(
+                icon = Icons.Outlined.AddPhotoAlternate,
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (corners.topRight.x - handleHalfPx).roundToInt(),
+                            y = (corners.topRight.y - handleHalfPx).roundToInt()
+                        )
+                    }
+                    .zIndex(2f),
+                onClick = onChangePhoto
+            )
+        }
         ResizeHandle(
             modifier = Modifier
                 .offset {
@@ -1546,6 +1633,8 @@ private data class LayerFrameSpec(
     val scaleX: Float,
     val scaleY: Float,
     val scaleAppliedToFrame: Boolean,
+    val minScale: Float = 0.35f,
+    val maxScale: Float = 4f,
     val corners: FrameCorners
 ) {
     val center: Offset get() = Offset(x + width / 2f, y + height / 2f)
@@ -1589,12 +1678,13 @@ private fun EditorLayer.toFrameSpec(
         }
 
         is StickerLayer -> {
+            val size = renderSize()
             scaledFrame(
                 layerId = id,
                 offsetXPx = transform.offsetX * scaleX,
                 offsetYPx = transform.offsetY * scaleY,
-                baseWidthPx = DESIGN_RENDER_LAYER_SIDE * scaleX,
-                baseHeightPx = DESIGN_RENDER_LAYER_SIDE * scaleY,
+                baseWidthPx = size.width * scaleX,
+                baseHeightPx = size.height * scaleY,
                 scale = transform.scale,
                 rotation = transform.rotation,
                 transform = transform,
@@ -1638,6 +1728,71 @@ private fun EditorLayer.toFrameSpec(
     }
 }
 
+private fun DiyTemplateElementSnapshot.toFrameSpec(
+    frameId: String,
+    scaleX: Float,
+    scaleY: Float
+): LayerFrameSpec? {
+    if (isFixedDiyTemplateElement()) return null
+    val transform = editTransform()
+    val baseWidth = if (isDiyImageElement() && localImagePath != null) {
+        contentBaseWidth ?: width
+    } else {
+        width
+    }
+    val baseHeight = if (isDiyImageElement() && localImagePath != null) {
+        contentBaseHeight ?: height
+    } else {
+        height
+    }
+    if (isDiyImageElement() && localImagePath == null) return null
+    return scaledFrame(
+        layerId = frameId,
+        offsetXPx = transform.offsetX * scaleX,
+        offsetYPx = transform.offsetY * scaleY,
+        baseWidthPx = baseWidth * scaleX,
+        baseHeightPx = baseHeight * scaleY,
+        scale = transform.scale,
+        rotation = transform.rotation,
+        transform = transform,
+        scaleX = scaleX,
+        scaleY = scaleY,
+        minScale = 0.05f,
+        maxScale = maxOf(12f, transform.scale * 2f)
+    )
+}
+
+private fun DiyTemplateElementSnapshot.withPreviewTransform(previewTransform: LayerTransform?): DiyTemplateElementSnapshot {
+    if (previewTransform == null) return this
+    if (isFixedDiyTemplateElement()) return this
+    return if (isDiyImageElement() && localImagePath != null) {
+        copy(contentTransform = previewTransform)
+    } else {
+        copy(transform = previewTransform)
+    }
+}
+
+private fun DiyTemplateElementSnapshot.editTransform(): LayerTransform {
+    if (isFixedDiyTemplateElement()) {
+        return LayerTransform(x, y, 1f, rotation)
+    }
+    return if (isDiyImageElement() && localImagePath != null) {
+        contentTransform ?: LayerTransform(x, y, 1f, rotation)
+    } else {
+        transform ?: LayerTransform(x, y, 1f, rotation)
+    }
+}
+
+private fun DiyTemplateElementSnapshot.isDiyImageElement(): Boolean {
+    return type.equals("IMAGE", ignoreCase = true) ||
+        type.equals("Image", ignoreCase = true)
+}
+
+private fun DiyTemplateElementSnapshot.isFixedDiyTemplateElement(): Boolean {
+    return type.equals("PICTURE", ignoreCase = true) ||
+        type.equals("Picture", ignoreCase = true)
+}
+
 private fun rawFrame(
     layerId: String,
     bounds: DesignRawBounds,
@@ -1672,6 +1827,14 @@ private fun rawFrame(
     )
 }
 
+private const val DIY_FRAME_PREFIX = "diy_slot:"
+
+private fun String.toDiyFrameId(): String = DIY_FRAME_PREFIX + this
+
+private fun String.isDiyFrameId(): Boolean = startsWith(DIY_FRAME_PREFIX)
+
+private fun String.toDiySlotId(): String = removePrefix(DIY_FRAME_PREFIX)
+
 private fun scaledFrame(
     layerId: String,
     offsetXPx: Float,
@@ -1682,7 +1845,9 @@ private fun scaledFrame(
     rotation: Float,
     transform: LayerTransform,
     scaleX: Float,
-    scaleY: Float
+    scaleY: Float,
+    minScale: Float = 0.35f,
+    maxScale: Float = 4f
 ): LayerFrameSpec {
     val bounds = DesignRawBounds(
         minX = 0f,
@@ -1710,6 +1875,8 @@ private fun scaledFrame(
         scaleX = scaleX,
         scaleY = scaleY,
         scaleAppliedToFrame = true,
+        minScale = minScale,
+        maxScale = maxScale,
         corners = mapped.toFrameCorners()
     )
 }

@@ -3,6 +3,7 @@ package com.example.diywallpaper.ui.feature.editor
 import com.example.diywallpaper.domain.model.BackgroundCreateItem
 import com.example.diywallpaper.domain.model.StickerItem
 import com.example.diywallpaper.domain.model.design.DesignSourceType
+import com.example.diywallpaper.domain.model.design.DiyTemplateSnapshot
 import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorCanvasSpec
 import com.example.diywallpaper.domain.model.design.EditorFontOption
@@ -16,10 +17,16 @@ data class EditorUiState(
     val isPersisted: Boolean = false,
     val title: String? = null,
     val sourceType: DesignSourceType? = null,
+    val diyTemplateId: String? = null,
+    val isDiyLive: Boolean = false,
+    val diyAnimationUrl: String? = null,
+    val templateSnapshot: DiyTemplateSnapshot? = null,
     val canvas: EditorCanvasSpec? = null,
     val background: EditorBackground? = null,
     val layers: List<EditorLayer> = emptyList(),
     val placeholders: List<PhotoPlaceholderLayer> = emptyList(),
+    val pendingDiyElementImportId: String? = null,
+    val selectedDiyElementId: String? = null,
     val selectedLayerId: String? = null,
     val activeBrushSessionLayerId: String? = null,
     val activeTool: EditorTool = EditorTool.PREVIEW,

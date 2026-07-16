@@ -12,7 +12,7 @@ import com.example.diywallpaper.domain.model.preview.WallpaperApplySource
 import com.example.diywallpaper.domain.model.preview.WallpaperTarget
 import com.example.diywallpaper.domain.model.preview.primaryAction
 import com.example.diywallpaper.domain.model.preview.toPlayableSource
-import com.example.diywallpaper.domain.model.design.hasAnimatedContent
+import com.example.diywallpaper.domain.model.design.requiresLiveExport
 import com.example.diywallpaper.domain.usecase.design.GetDesignProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.GetUserDesignUseCase
 import com.example.diywallpaper.domain.usecase.preview.GetPreviewCarouselItemsUseCase
@@ -243,7 +243,7 @@ class DevicePreviewViewModel @Inject constructor(
                         is AppResult.Success -> projectResult.data
                         is AppResult.Error -> null
                     }
-                    val hasAnimatedContent = designProject?.hasAnimatedContent() == true
+                    val requiresLiveExport = designProject?.requiresLiveExport() == true
                     val previewPath = design.previewPath ?: design.thumbnailPath ?: design.exportedImagePath
                     val exportPath = design.exportedImagePath ?: previewPath
                     val currentItem = if (previewPath != null || designProject != null) {
@@ -252,7 +252,7 @@ class DevicePreviewViewModel @Inject constructor(
                             categoryId = COLLECTION_PREVIEW_CATEGORY_ID,
                             rank = 0,
                             title = design.title ?: "My Design",
-                            kind = if (hasAnimatedContent) {
+                            kind = if (requiresLiveExport) {
                                 PreviewItemKind.WALLPAPER_LIVE
                             } else {
                                 PreviewItemKind.WALLPAPER_STATIC

@@ -5,6 +5,7 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Matrix
 import android.graphics.PathMeasure
 import android.graphics.Typeface
+import android.text.TextPaint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,10 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -43,6 +50,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
@@ -60,22 +68,30 @@ import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.DesignRawBounds
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.DesignViewportTransform
+import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
+import com.example.diywallpaper.domain.model.design.DiyTemplateSnapshot
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoLayer
+import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
 import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StickerTrailRotationMode
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.designViewportTransform
+import com.example.diywallpaper.domain.model.design.proceduralAnimatedTransform
+import com.example.diywallpaper.domain.model.design.requiresLiveExport
 import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
+import com.example.diywallpaper.domain.model.design.renderSize
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.ui.feature.editor.editorFontFamily
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 @Composable
@@ -84,9 +100,22 @@ fun SavedDesignDevicePreview(
     isChromeVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val shouldAnimate = project.requiresLiveExport()
+    var frameTimeMs by remember(project.id, shouldAnimate) { mutableStateOf(0L) }
+    LaunchedEffect(project.id, project.updatedAt, shouldAnimate) {
+        if (!shouldAnimate) {
+            frameTimeMs = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            frameTimeMs = withFrameMillis { it }
+        }
+    }
     Box(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
         SavedDesignProjectCanvas(
             project = project,
+            frameTimeMs = frameTimeMs,
+            isAnimating = shouldAnimate,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -116,6 +145,8 @@ fun SavedDesignDevicePreview(
 @Composable
 private fun SavedDesignProjectCanvas(
     project: EditorProject,
+    frameTimeMs: Long,
+    isAnimating: Boolean,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
@@ -140,6 +171,18 @@ private fun SavedDesignProjectCanvas(
             background = project.background,
             modifier = Modifier.fillMaxSize()
         )
+
+        val diySource = project.source as? EditorProjectSource.Diy
+        if (diySource != null) {
+            SavedDiyTemplateContent(
+                templateId = diySource.templateId,
+                templateSnapshot = diySource.templateSnapshot,
+                placeholders = project.placeholders,
+                viewport = viewport,
+                frameTimeMs = frameTimeMs,
+                isAnimating = isAnimating && diySource.isLive
+            )
+        }
 
         project.layers
             .filterNot { it.isHidden }
@@ -182,6 +225,226 @@ private fun SavedDesignProjectCanvas(
 }
 
 @Composable
+private fun SavedDiyTemplateContent(
+    templateId: String,
+    templateSnapshot: DiyTemplateSnapshot,
+    placeholders: List<PhotoPlaceholderLayer>,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long,
+    isAnimating: Boolean
+) {
+    templateSnapshot.elements
+        .sortedBy { it.zIndex }
+            .forEach { element ->
+                when {
+                element.isTextElement() -> {
+                    SavedDiyTemplateText(
+                        templateId = templateId,
+                        element = element,
+                        viewport = viewport,
+                        frameTimeMs = frameTimeMs,
+                        isAnimating = isAnimating
+                    )
+                }
+
+                element.isAssetElement() -> {
+                    SavedDiyTemplatePicture(
+                        templateId = templateId,
+                        element = element,
+                        viewport = viewport,
+                        frameTimeMs = frameTimeMs,
+                        isAnimating = isAnimating
+                    )
+                }
+
+                element.isImageElement() -> {
+                    SavedDiyPlaceholderPreview(
+                        templateId = templateId,
+                        element = element,
+                        viewport = viewport,
+                        frameTimeMs = frameTimeMs,
+                        isAnimating = isAnimating
+                    )
+                }
+            }
+        }
+}
+
+@Composable
+private fun SavedDiyTemplateText(
+    templateId: String,
+    element: DiyTemplateElementSnapshot,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long,
+    isAnimating: Boolean
+) {
+    val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+    val textColor = runCatching { parsePreviewColor(element.fontColor) }
+        .getOrDefault(Color.Black)
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = viewport.modelXToTarget(transform.offsetX).roundToInt(),
+                    y = viewport.modelYToTarget(transform.offsetY).roundToInt()
+                )
+            }
+            .size(
+                width = pxToDp(element.width * viewport.scale),
+                height = pxToDp(element.height * viewport.scale)
+            )
+            .graphicsLayer(
+                rotationZ = transform.rotation,
+                scaleX = transform.scale,
+                scaleY = transform.scale
+            )
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val paint = TextPaint().apply {
+                color = textColor.toArgb()
+                textSize = max(1f, element.fontSize * viewport.scale)
+                typeface = Typeface.DEFAULT
+                isAntiAlias = true
+            }
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.drawText(
+                    element.title,
+                    0f,
+                    paint.textSize,
+                    paint
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedDiyTemplatePicture(
+    templateId: String,
+    element: DiyTemplateElementSnapshot,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long,
+    isAnimating: Boolean
+) {
+    val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = viewport.modelXToTarget(transform.offsetX).roundToInt(),
+                    y = viewport.modelYToTarget(transform.offsetY).roundToInt()
+                )
+            }
+            .size(
+                width = pxToDp(element.width * viewport.scale),
+                height = pxToDp(element.height * viewport.scale)
+            )
+            .graphicsLayer(
+                rotationZ = transform.rotation,
+                scaleX = transform.scale,
+                scaleY = transform.scale
+            )
+    ) {
+        AsyncImage(
+            model = element.assetUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillBounds
+        )
+    }
+}
+
+@Composable
+private fun SavedDiyPlaceholderPreview(
+    templateId: String,
+    element: DiyTemplateElementSnapshot,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long,
+    isAnimating: Boolean
+) {
+    if (element.localImagePath.isNullOrBlank() && element.previewPathOrUrl.isNullOrBlank()) return
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = viewport.modelXToTarget(element.x).roundToInt(),
+                    y = viewport.modelYToTarget(element.y).roundToInt()
+                )
+            }
+            .size(
+                width = pxToDp(element.width * viewport.scale),
+                height = pxToDp(element.height * viewport.scale)
+            )
+            .graphicsLayer(
+                rotationZ = element.rotation,
+                clip = true,
+                compositingStrategy = CompositingStrategy.Offscreen
+            )
+            .placeholderMask(element.maskPathOrUrl)
+    ) {
+        if (!element.localImagePath.isNullOrBlank()) {
+            SavedDiyElementImageContent(
+                templateId = templateId,
+                element = element,
+                viewport = viewport,
+                frameTimeMs = frameTimeMs,
+                isAnimating = isAnimating
+            )
+        } else {
+            AsyncImage(
+                model = element.previewPathOrUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+    }
+}
+
+@Composable
+private fun SavedDiyElementImageContent(
+    templateId: String,
+    element: DiyTemplateElementSnapshot,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long,
+    isAnimating: Boolean
+) {
+    val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+    val baseWidth = element.contentBaseWidth ?: element.width
+    val baseHeight = element.contentBaseHeight ?: element.height
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = ((transform.offsetX - element.x) * viewport.scale).roundToInt(),
+                    y = ((transform.offsetY - element.y) * viewport.scale).roundToInt()
+                )
+            }
+            .size(
+                width = pxToDp(baseWidth * viewport.scale),
+                height = pxToDp(baseHeight * viewport.scale)
+            )
+            .graphicsLayer(
+                rotationZ = transform.rotation - element.rotation,
+                scaleX = transform.scale,
+                scaleY = transform.scale
+            )
+    ) {
+        SavedPhotoLayerContent(
+            layer = PhotoLayer(
+                id = element.id,
+                localPath = element.localImagePath.orEmpty(),
+                crop = element.crop,
+                zIndex = element.zIndex,
+                transform = LayerTransform(0f, 0f, 1f, 0f),
+                isLocked = false,
+                isHidden = false
+            )
+        )
+    }
+}
+
+@Composable
 private fun SavedDesignBackground(
     background: EditorBackground,
     modifier: Modifier = Modifier
@@ -218,7 +481,7 @@ private fun SavedStickerLayer(
     layer: StickerLayer,
     viewport: DesignViewportTransform
 ) {
-    val size = stickerRenderSize()
+    val size = layer.renderSize()
     SavedLayerBox(
         transform = layer.transform,
         width = size.width,
@@ -246,38 +509,108 @@ private fun SavedPhotoLayer(
         height = baseSize.height,
         viewport = viewport
     ) {
-        val imageBitmap = remember(layer.localPath) {
-            BitmapFactory.decodeFile(layer.localPath)?.asImageBitmap()
-        }
-        if (imageBitmap != null) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val crop = layer.crop
-                val srcLeft = ((crop?.normalizedLeft ?: 0f).coerceIn(0f, 1f) * imageBitmap.width)
-                    .roundToInt()
-                val srcTop = ((crop?.normalizedTop ?: 0f).coerceIn(0f, 1f) * imageBitmap.height)
-                    .roundToInt()
-                val srcRight = ((crop?.normalizedRight ?: 1f).coerceIn(0f, 1f) * imageBitmap.width)
-                    .roundToInt()
-                    .coerceAtLeast(srcLeft + 1)
-                val srcBottom = ((crop?.normalizedBottom ?: 1f).coerceIn(0f, 1f) * imageBitmap.height)
-                    .roundToInt()
-                    .coerceAtLeast(srcTop + 1)
-                drawImage(
-                    image = imageBitmap,
-                    srcOffset = IntOffset(srcLeft, srcTop),
-                    srcSize = IntSize(srcRight - srcLeft, srcBottom - srcTop),
-                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt())
-                )
-            }
-        } else {
-            AsyncImage(
-                model = layer.localPath,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+        SavedPhotoLayerContent(layer = layer)
+    }
+}
+
+@Composable
+private fun SavedPhotoLayerContent(layer: PhotoLayer) {
+    val imageBitmap = remember(layer.localPath) {
+        BitmapFactory.decodeFile(layer.localPath)?.asImageBitmap()
+    }
+    if (imageBitmap != null) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val crop = layer.crop
+            val srcLeft = ((crop?.normalizedLeft ?: 0f).coerceIn(0f, 1f) * imageBitmap.width)
+                .roundToInt()
+            val srcTop = ((crop?.normalizedTop ?: 0f).coerceIn(0f, 1f) * imageBitmap.height)
+                .roundToInt()
+            val srcRight = ((crop?.normalizedRight ?: 1f).coerceIn(0f, 1f) * imageBitmap.width)
+                .roundToInt()
+                .coerceAtLeast(srcLeft + 1)
+            val srcBottom = ((crop?.normalizedBottom ?: 1f).coerceIn(0f, 1f) * imageBitmap.height)
+                .roundToInt()
+                .coerceAtLeast(srcTop + 1)
+            drawImage(
+                image = imageBitmap,
+                srcOffset = IntOffset(srcLeft, srcTop),
+                srcSize = IntSize(srcRight - srcLeft, srcBottom - srcTop),
+                dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt())
             )
         }
+    } else {
+        AsyncImage(
+            model = layer.localPath,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
     }
+}
+
+@Composable
+private fun Modifier.placeholderMask(maskPathOrUrl: String?): Modifier {
+    val maskBitmap = remember(maskPathOrUrl) {
+        maskPathOrUrl
+            ?.takeUnless { it.startsWith("http://") || it.startsWith("https://") }
+            ?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+    } ?: return this
+
+    return drawWithContent {
+        drawContent()
+        drawImage(
+            image = maskBitmap,
+            dstSize = IntSize(
+                width = size.width.roundToInt().coerceAtLeast(1),
+                height = size.height.roundToInt().coerceAtLeast(1)
+            ),
+            blendMode = BlendMode.DstIn
+        )
+    }
+}
+
+private fun DiyTemplateElementSnapshot.isTextElement(): Boolean {
+    return type.equals("TEXT", ignoreCase = true) ||
+        type.equals("Text", ignoreCase = true)
+}
+
+private fun DiyTemplateElementSnapshot.isAssetElement(): Boolean {
+    return !isImageElement() &&
+        !isTextElement() &&
+        !assetUrl.isNullOrBlank()
+}
+
+private fun DiyTemplateElementSnapshot.isImageElement(): Boolean {
+    return type.equals("IMAGE", ignoreCase = true) ||
+        type.equals("Image", ignoreCase = true)
+}
+
+private fun DiyTemplateElementSnapshot.matchPlaceholder(
+    placeholders: List<PhotoPlaceholderLayer>
+): PhotoPlaceholderLayer? {
+    return placeholders.firstOrNull { placeholder ->
+        placeholder.zIndex == zIndex &&
+            placeholder.x == x &&
+            placeholder.y == y &&
+            placeholder.width == width &&
+            placeholder.height == height
+    } ?: placeholders.firstOrNull { it.zIndex == zIndex }
+}
+
+private fun DiyTemplateElementSnapshot.editTransform(): LayerTransform {
+    if (isFixedTemplateElement()) {
+        return LayerTransform(x, y, 1f, rotation)
+    }
+    return if (isImageElement() && localImagePath != null) {
+        contentTransform ?: LayerTransform(x, y, 1f, rotation)
+    } else {
+        transform ?: LayerTransform(x, y, 1f, rotation)
+    }
+}
+
+private fun DiyTemplateElementSnapshot.isFixedTemplateElement(): Boolean {
+    return type.equals("PICTURE", ignoreCase = true) ||
+        type.equals("Picture", ignoreCase = true)
 }
 
 @Composable
@@ -964,4 +1297,9 @@ private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -
         is DrawLayerData.BrushStack -> items.forEach(block)
         else -> Unit
     }
+}
+
+@Composable
+private fun pxToDp(px: Float): Dp {
+    return with(LocalDensity.current) { px.toDp() }
 }

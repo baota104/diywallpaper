@@ -16,6 +16,7 @@ interface DiyRepository {
     suspend fun getDiyTemplateData(
         templateId: String,
         diyDataUrl: String,
+        dataZipUrl: String? = null,
     ): AppResult<DiyTemplateData>
 
     suspend fun getDiyAnimationRaw(

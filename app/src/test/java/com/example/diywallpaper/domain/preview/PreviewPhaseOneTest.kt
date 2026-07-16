@@ -68,6 +68,7 @@ class PreviewPhaseOneTest {
             rank = 2,
             thumbUrl = "thumb.webp",
             diyDataUrl = "data.json",
+            dataZipUrl = null,
             diyAnimationUrl = "animation.json",
             isFavorite = false
         )
@@ -243,7 +244,8 @@ private class FakeDiyRepository(
 
     override suspend fun getDiyTemplateData(
         templateId: String,
-        diyDataUrl: String
+        diyDataUrl: String,
+        dataZipUrl: String?
     ): AppResult<DiyTemplateData> {
         return AppResult.Success(
             DiyTemplateData(

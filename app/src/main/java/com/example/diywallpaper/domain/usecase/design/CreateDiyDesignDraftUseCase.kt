@@ -3,8 +3,8 @@ package com.example.diywallpaper.domain.usecase.design
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.data.remote.dto.resolveDiyBackgroundValue
 import com.example.diywallpaper.domain.model.DiyBackgroundValue
-import com.example.diywallpaper.domain.model.DiyElementType
 import com.example.diywallpaper.domain.model.DiyTemplate
+import com.example.diywallpaper.domain.model.DiyTemplateType
 import com.example.diywallpaper.domain.model.DiyTemplateData
 import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
 import com.example.diywallpaper.domain.model.design.DiyTemplateSnapshot
@@ -12,9 +12,7 @@ import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorCanvasSpec
 import com.example.diywallpaper.domain.model.design.EditorProject
 import com.example.diywallpaper.domain.model.design.EditorProjectSource
-import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
-import com.example.diywallpaper.domain.model.design.StickerLayer
 import java.util.UUID
 import javax.inject.Inject
 
@@ -48,11 +46,14 @@ internal fun DiyTemplate.toEditorProject(
         id = projectId,
         source = EditorProjectSource.Diy(
             templateId = id,
+            isLive = type == DiyTemplateType.DIY_LIVE,
+            diyAnimationUrl = diyAnimationUrl,
             templateSnapshot = DiyTemplateSnapshot(
                 width = templateData.width,
                 height = templateData.height,
                 background = backgroundValue.toTemplateBackgroundSnapshot(),
                 elements = templateData.elements.map { element ->
+                    val placeholder = templateData.placeholders.firstOrNull { it.zIndex == element.zIndex }
                     DiyTemplateElementSnapshot(
                         id = buildElementSnapshotId(element),
                         type = element.type.name,
@@ -62,7 +63,13 @@ internal fun DiyTemplate.toEditorProject(
                         height = element.height,
                         rotation = element.rotation,
                         zIndex = element.zIndex,
-                        assetUrl = element.assetUrl
+                        assetUrl = element.assetUrl,
+                        title = element.title,
+                        fontSize = element.fontSize,
+                        fontColor = element.fontColor,
+                        fontFamilyIndex = element.fontFamilyIndex,
+                        maskPathOrUrl = element.maskUrl ?: placeholder?.maskUrl,
+                        previewPathOrUrl = placeholder?.previewUrl
                     )
                 }
             )
@@ -72,25 +79,7 @@ internal fun DiyTemplate.toEditorProject(
             height = templateData.height
         ),
         background = backgroundValue.toEditorBackground(),
-        layers = templateData.elements
-            .filter { it.type == DiyElementType.PICTURE && !it.assetUrl.isNullOrBlank() }
-            .sortedBy { it.zIndex }
-            .map { element ->
-                StickerLayer(
-                    id = buildElementSnapshotId(element),
-                    stickerId = null,
-                    assetPathOrUrl = element.assetUrl.orEmpty(),
-                    zIndex = element.zIndex,
-                    transform = LayerTransform(
-                        offsetX = element.x,
-                        offsetY = element.y,
-                        scale = 1f,
-                        rotation = element.rotation
-                    ),
-                    isLocked = true,
-                    isHidden = false
-                )
-            },
+        layers = emptyList(),
         placeholders = templateData.placeholders
             .sortedBy { it.zIndex }
             .map { placeholder ->
@@ -101,7 +90,9 @@ internal fun DiyTemplate.toEditorProject(
                     width = placeholder.width,
                     height = placeholder.height,
                     rotation = placeholder.rotation,
-                    zIndex = placeholder.zIndex
+                    zIndex = placeholder.zIndex,
+                    maskPathOrUrl = placeholder.maskUrl,
+                    previewPathOrUrl = placeholder.previewUrl
                 )
             },
         selectedLayerId = null,

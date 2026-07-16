@@ -432,7 +432,11 @@ private class FakeDiyRepository : DiyRepository {
     override fun observeDiyTemplates(): Flow<List<DiyTemplate>> = flowOf(emptyList())
     override suspend fun refreshDiyTemplates(): AppResult<Unit> = AppResult.Success(Unit)
     override suspend fun toggleFavorite(templateId: String): AppResult<Unit> = AppResult.Success(Unit)
-    override suspend fun getDiyTemplateData(templateId: String, diyDataUrl: String): AppResult<DiyTemplateData> {
+    override suspend fun getDiyTemplateData(
+        templateId: String,
+        diyDataUrl: String,
+        dataZipUrl: String?
+    ): AppResult<DiyTemplateData> {
         return AppResult.Error(AppError.EmptyResponse)
     }
     override suspend fun getDiyAnimationRaw(templateId: String, animationUrl: String): AppResult<DiyAnimationRaw> {

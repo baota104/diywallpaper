@@ -34,11 +34,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.preview.PreviewCatalogItem
 import com.example.diywallpaper.domain.model.preview.PreviewItemKind
@@ -110,32 +105,12 @@ fun PreviewCarouselCard(
                 }
 
                 PreviewItemKind.DIY_LIVE -> {
-                    val animationUrl = item.diySource?.diyAnimationUrl
-                    val composition = if (isPlaybackActive && !animationUrl.isNullOrBlank()) {
-                        rememberLottieComposition(LottieCompositionSpec.Url(animationUrl))
-                    } else {
-                        rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.ic_select_lg))
-                    }
-                    val progress = animateLottieCompositionAsState(
-                        composition = composition.value,
-                        iterations = LottieConstants.IterateForever,
-                        isPlaying = isPlaybackActive && composition.value != null
+                    AsyncImage(
+                        model = item.thumbUrl,
+                        contentDescription = stringResource(id = R.string.home_wallpaper_preview),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                    if (isPlaybackActive && composition.value != null) {
-                        LottieAnimation(
-                            composition = composition.value,
-                            progress = { progress.value },
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        AsyncImage(
-                            model = item.thumbUrl,
-                            contentDescription = stringResource(id = R.string.home_wallpaper_preview),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
                 }
 
                 else -> {

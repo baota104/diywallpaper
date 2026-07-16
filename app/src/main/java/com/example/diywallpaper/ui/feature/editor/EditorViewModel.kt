@@ -24,7 +24,9 @@ import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.TextStyleSpec
-import com.example.diywallpaper.domain.model.design.hasAnimatedContent
+import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.requiresLiveExport
+import com.example.diywallpaper.domain.usecase.design.BuildDiyEditorProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.CreateDesignDraftUseCase
 import com.example.diywallpaper.domain.usecase.design.DeleteDesignUseCase
 import com.example.diywallpaper.domain.usecase.design.GenerateDesignAssetsUseCase
@@ -50,6 +52,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class EditorViewModel @Inject constructor(
     private val createDesignDraftUseCase: CreateDesignDraftUseCase,
+    private val buildDiyEditorProjectUseCase: BuildDiyEditorProjectUseCase,
     private val getUserDesignUseCase: GetUserDesignUseCase,
     private val getDesignProjectUseCase: GetDesignProjectUseCase,
     private val saveDesignProjectUseCase: SaveDesignProjectUseCase,
@@ -129,6 +132,38 @@ class EditorViewModel @Inject constructor(
         historyState = EditorHistoryState(current = project)
         _uiState.update { it.copy(isPersisted = false) }
         _uiState.value = project.toUiState(historyState)
+    }
+
+    fun loadDiyTemplateDraft(
+        templateId: String,
+        projectId: String,
+        title: String? = null
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, saveMessage = null) }
+            when (
+                val result = buildDiyEditorProjectUseCase(
+                    templateId = templateId,
+                    projectId = projectId
+                )
+            ) {
+                is AppResult.Success -> {
+                    startNewProject(
+                        project = result.data,
+                        title = title
+                    )
+                }
+
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = result.error.toString().substringBefore("(")
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun bindProject(project: EditorProject) {
@@ -315,6 +350,138 @@ class EditorViewModel @Inject constructor(
     fun selectLayer(layerId: String?) {
         mutateProject { project ->
             project.copy(selectedLayerId = layerId, updatedAt = now())
+        }
+        _uiState.update { it.copy(selectedDiyElementId = null) }
+    }
+
+    fun selectDiySlotImage(slotId: String?) {
+        mutateProject { project ->
+            project.copy(selectedLayerId = null, updatedAt = now())
+        }
+        _uiState.update {
+            it.copy(
+                selectedDiyElementId = slotId,
+                pendingDiyElementImportId = null,
+                openedToolSheet = null,
+                isPreviewMode = false
+            )
+        }
+    }
+
+    fun beginDiySlotImageImport(slotId: String): Boolean {
+        val state = _uiState.value
+        state.templateSnapshot
+            ?.elements
+            ?.firstOrNull { it.id == slotId && it.isDiyImageElement() }
+            ?: return false
+        if (state.pendingDiyElementImportId != null) {
+            return false
+        }
+        _uiState.update {
+            it.copy(
+                selectedLayerId = null,
+                selectedDiyElementId = null,
+                pendingDiyElementImportId = slotId,
+                openedToolSheet = null,
+                isPreviewMode = false,
+                saveMessage = null
+            )
+        }
+        return true
+    }
+
+    fun consumePendingDiySlotImageImport() {
+        _uiState.update { it.copy(pendingDiyElementImportId = null) }
+    }
+
+    fun setDiySlotImage(
+        slotId: String,
+        localPath: String,
+        crop: CropSpec? = null
+    ) {
+        val element = (_uiState.value.templateSnapshot?.elements)
+            ?.firstOrNull { it.id == slotId && it.isDiyImageElement() }
+            ?: return
+        val baseSize = photoRenderSize(crop?.ratio)
+        val fitScale = maxOf(
+            element.width / baseSize.width.coerceAtLeast(1f),
+            element.height / baseSize.height.coerceAtLeast(1f)
+        ).coerceAtLeast(0.01f)
+        mutateDiyTemplateElement(slotId) { current ->
+            current.copy(
+                localImagePath = localPath,
+                crop = crop,
+                contentBaseWidth = baseSize.width,
+                contentBaseHeight = baseSize.height,
+                contentTransform = LayerTransform(
+                    offsetX = current.x + current.width / 2f - baseSize.width / 2f,
+                    offsetY = current.y + current.height / 2f - baseSize.height / 2f,
+                    scale = fitScale,
+                    rotation = current.rotation
+                )
+            )
+        }
+        _uiState.update {
+            it.copy(
+                pendingDiyElementImportId = null,
+                selectedLayerId = null,
+                selectedDiyElementId = slotId,
+                saveMessage = null
+            )
+        }
+    }
+
+    fun updateDiySlotImageTransform(
+        slotId: String,
+        panXDelta: Float,
+        panYDelta: Float,
+        scaleMultiplier: Float,
+        rotationDelta: Float = 0f
+    ) {
+        mutateDiyTemplateElement(slotId) { element ->
+            if (element.isFixedDiyTemplateElement()) {
+                return@mutateDiyTemplateElement element
+            }
+            if (element.isDiyImageElement() && element.localImagePath == null) {
+                return@mutateDiyTemplateElement element
+            }
+            val baseTransform = element.editTransform()
+            val nextTransform = baseTransform.copy(
+                offsetX = baseTransform.offsetX + panXDelta,
+                offsetY = baseTransform.offsetY + panYDelta,
+                scale = (baseTransform.scale * scaleMultiplier)
+                    .coerceIn(0.05f, maxOf(12f, baseTransform.scale * 2f)),
+                rotation = baseTransform.rotation + rotationDelta
+            )
+            if (element.isDiyImageElement() && element.localImagePath != null) {
+                element.copy(contentTransform = nextTransform)
+            } else {
+                element.copy(transform = nextTransform)
+            }
+        }
+        _uiState.update {
+            it.copy(
+                selectedLayerId = null,
+                selectedDiyElementId = slotId
+            )
+        }
+    }
+
+    fun removeDiySlotImage(slotId: String) {
+        mutateDiyTemplateElement(slotId) { element ->
+            element.copy(
+                localImagePath = null,
+                crop = null,
+                contentBaseWidth = null,
+                contentBaseHeight = null,
+                contentTransform = null
+            )
+        }
+        _uiState.update { state ->
+            state.copy(
+                pendingDiyElementImportId = null,
+                selectedDiyElementId = state.selectedDiyElementId.takeUnless { it == slotId }
+            )
         }
     }
 
@@ -719,7 +886,7 @@ class EditorViewModel @Inject constructor(
                 }
             }
 
-            if (persistedProject.hasAnimatedContent()) {
+            if (persistedProject.requiresLiveExport()) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
@@ -1178,6 +1345,26 @@ class EditorViewModel @Inject constructor(
         }
     }
 
+    private fun mutateDiyTemplateElement(
+        elementId: String,
+        transform: (com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot) ->
+            com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
+    ) {
+        mutateProject { project ->
+            val source = project.source as? EditorProjectSource.Diy ?: return@mutateProject project
+            val nextElements = source.templateSnapshot.elements.map { element ->
+                if (element.id == elementId) transform(element) else element
+            }
+            project.copy(
+                source = source.copy(
+                    templateSnapshot = source.templateSnapshot.copy(elements = nextElements)
+                ),
+                selectedLayerId = null,
+                updatedAt = now()
+            )
+        }
+    }
+
     private fun nextZIndex(): Int {
         return (historyState.current?.layers?.maxOfOrNull { it.zIndex } ?: 0) + 1
     }
@@ -1219,6 +1406,7 @@ class EditorViewModel @Inject constructor(
 
     private fun EditorProject.toUiState(history: EditorHistoryState): EditorUiState {
         val currentState = _uiState.value
+        val preserveDiySlotState = currentState.projectId == id
         return EditorUiState(
             projectId = id,
             isPersisted = currentState.isPersisted,
@@ -1227,10 +1415,20 @@ class EditorViewModel @Inject constructor(
                 is EditorProjectSource.Diy -> DesignSourceType.DIY_TEMPLATE
                 EditorProjectSource.Scratch -> DesignSourceType.SCRATCH
             },
+            diyTemplateId = (source as? EditorProjectSource.Diy)?.templateId,
+            isDiyLive = (source as? EditorProjectSource.Diy)?.isLive == true,
+            diyAnimationUrl = (source as? EditorProjectSource.Diy)?.diyAnimationUrl,
+            templateSnapshot = (source as? EditorProjectSource.Diy)?.templateSnapshot,
             canvas = canvas,
             background = background,
             layers = layers,
             placeholders = placeholders,
+            pendingDiyElementImportId = if (preserveDiySlotState) currentState.pendingDiyElementImportId else null,
+            selectedDiyElementId = if (preserveDiySlotState && selectedLayerId == null) {
+                currentState.selectedDiyElementId
+            } else {
+                null
+            },
             selectedLayerId = selectedLayerId,
             activeBrushSessionLayerId = activeBrushSessionLayerId,
             activeTool = currentState.activeTool,
@@ -1306,4 +1504,25 @@ class EditorViewModel @Inject constructor(
         const val DELETE_SUCCESS_MESSAGE = "Design deleted"
         const val DEFAULT_BRUSH_SIZE = 28f
     }
+}
+
+private fun com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot.isDiyImageElement(): Boolean {
+    return type.equals("IMAGE", ignoreCase = true) ||
+        type.equals("Image", ignoreCase = true)
+}
+
+private fun com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot.editTransform(): LayerTransform {
+    if (isFixedDiyTemplateElement()) {
+        return LayerTransform(x, y, 1f, rotation)
+    }
+    return if (isDiyImageElement() && localImagePath != null) {
+        contentTransform ?: LayerTransform(x, y, 1f, rotation)
+    } else {
+        transform ?: LayerTransform(x, y, 1f, rotation)
+    }
+}
+
+private fun com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot.isFixedDiyTemplateElement(): Boolean {
+    return type.equals("PICTURE", ignoreCase = true) ||
+        type.equals("Picture", ignoreCase = true)
 }

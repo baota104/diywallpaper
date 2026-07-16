@@ -31,6 +31,7 @@ private fun buildHomeFeed(
     wallpaperCategories: List<WallpaperCategory>,
     diyTemplates: List<DiyTemplate>
 ): List<HomeFeedCategory> {
+    val sortedDiyTemplates = diyTemplates.sortedBy { it.rank }
     val wallpaperFeedCategories = wallpaperCategories
         .sortedBy { it.rank }
         .map { category ->
@@ -45,8 +46,17 @@ private fun buildHomeFeed(
             )
         }
 
-    // Temporarily hide DIY from Home until its feed data is finalized for the grid experience.
-    val diyCategory = null
+    val diyCategory = sortedDiyTemplates
+        .takeIf { it.isNotEmpty() }
+        ?.let { templates ->
+            HomeFeedCategory(
+                id = HomeFeedItem.HOME_DIY_CATEGORY_ID,
+                title = HomeFeedItem.HOME_DIY_CATEGORY_ID,
+                iconUrl = null,
+                rank = templates.minOf { it.rank },
+                items = templates.map(HomeFeedItem::DiyEntry)
+            )
+        }
 
     return buildList {
         diyCategory?.let(::add)

@@ -282,7 +282,8 @@ private class FakeDiyRepository : DiyRepository {
 
     override suspend fun getDiyTemplateData(
         templateId: String,
-        diyDataUrl: String
+        diyDataUrl: String,
+        dataZipUrl: String?
     ): com.example.diywallpaper.core.result.AppResult<DiyTemplateData> {
         throw UnsupportedOperationException()
     }

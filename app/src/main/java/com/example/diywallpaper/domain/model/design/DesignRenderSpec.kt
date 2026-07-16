@@ -83,6 +83,13 @@ fun stickerRenderSize(): DesignRenderSize {
     )
 }
 
+fun StickerLayer.renderSize(): DesignRenderSize {
+    return DesignRenderSize(
+        width = renderWidth?.takeIf { it > 0f } ?: DESIGN_RENDER_LAYER_SIDE,
+        height = renderHeight?.takeIf { it > 0f } ?: DESIGN_RENDER_LAYER_SIDE
+    )
+}
+
 fun textRenderSize(): DesignRenderSize {
     return DesignRenderSize(
         width = DESIGN_RENDER_LAYER_SIDE * DESIGN_RENDER_TEXT_WIDTH_FACTOR,

@@ -4,11 +4,20 @@ import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.data.local.datasource.SpecialTextLocalDataSource
 import com.example.diywallpaper.data.local.dto.SpecialTextDto
 import com.example.diywallpaper.domain.model.BackgroundCreateItem
+import com.example.diywallpaper.domain.model.DiyAnimationRaw
+import com.example.diywallpaper.domain.model.DiyElement
+import com.example.diywallpaper.domain.model.DiyElementType
+import com.example.diywallpaper.domain.model.DiyTemplate
+import com.example.diywallpaper.domain.model.DiyTemplateData
+import com.example.diywallpaper.domain.model.DiyTemplateType
+import com.example.diywallpaper.domain.model.PhotoPlaceholder
 import com.example.diywallpaper.domain.model.StickerItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.CropPresetRatio
 import com.example.diywallpaper.domain.model.design.CropSpec
 import com.example.diywallpaper.domain.model.design.DesignSourceType
+import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
+import com.example.diywallpaper.domain.model.design.DiyTemplateSnapshot
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -17,6 +26,7 @@ import com.example.diywallpaper.domain.model.design.EditorProject
 import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoLayer
+import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
 import com.example.diywallpaper.domain.model.design.StickerTrailRotationMode
 import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.StickerLayer
@@ -27,8 +37,10 @@ import com.example.diywallpaper.domain.model.design.UserDesign
 import com.example.diywallpaper.domain.model.design.GeneratedDesignAssets
 import com.example.diywallpaper.domain.repository.BackgroundCreateRepository
 import com.example.diywallpaper.domain.repository.DesignAssetExporter
+import com.example.diywallpaper.domain.repository.DiyRepository
 import com.example.diywallpaper.domain.repository.StickerRepository
 import com.example.diywallpaper.domain.repository.UserDesignRepository
+import com.example.diywallpaper.domain.usecase.design.BuildDiyEditorProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.CreateDesignDraftUseCase
 import com.example.diywallpaper.domain.usecase.design.DeleteDesignUseCase
 import com.example.diywallpaper.domain.usecase.design.GenerateDesignAssetsUseCase
@@ -86,6 +98,29 @@ class EditorViewModelTest {
         viewModel.startNewProject(sampleProject(), title = "Draft")
         advanceUntilIdle()
 
+        assertFalse(viewModel.uiState.value.isPersisted)
+        assertEquals(0, repository.createdDraftCount)
+    }
+
+    @Test
+    fun `loadDiyTemplateDraft creates runtime diy project without persisting`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val diyRepository = FakeDiyRepository()
+        val viewModel = createViewModel(
+            repository = repository,
+            diyRepository = diyRepository
+        )
+
+        viewModel.loadDiyTemplateDraft(
+            templateId = "template_1",
+            projectId = "runtime_diy",
+            title = "DIY template_1"
+        )
+        advanceUntilIdle()
+
+        assertEquals("runtime_diy", viewModel.uiState.value.projectId)
+        assertEquals(DesignSourceType.DIY_TEMPLATE, viewModel.uiState.value.sourceType)
+        assertEquals(1, viewModel.uiState.value.placeholders.size)
         assertFalse(viewModel.uiState.value.isPersisted)
         assertEquals(0, repository.createdDraftCount)
     }
@@ -246,6 +281,60 @@ class EditorViewModelTest {
         )
         val stickerLayer = viewModel.uiState.value.layers.last() as StickerLayer
         assertEquals("sticker_1", stickerLayer.stickerId)
+    }
+
+    @Test
+    fun `diy slot image import stores slot image without creating photo layer`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.bindProject(sampleProjectWithPlaceholder())
+
+        viewModel.beginDiySlotImageImport("placeholder_1")
+        assertEquals("placeholder_1", viewModel.uiState.value.pendingDiyElementImportId)
+
+        viewModel.setDiySlotImage(
+            slotId = "placeholder_1",
+            localPath = "/tmp/slot_photo.jpg",
+            crop = CropSpec(0f, 0f, 1f, 1f, CropPresetRatio.RATIO_9_16)
+        )
+
+        val element = viewModel.uiState.value.templateSnapshot?.elements?.single()
+            ?: error("Missing DIY element")
+        assertEquals("placeholder_1", element.id)
+        assertEquals("/tmp/slot_photo.jpg", element.localImagePath)
+        assertEquals(123.75f, element.contentBaseWidth ?: 0f, 0.01f)
+        assertEquals(220f, element.contentBaseHeight ?: 0f, 0.01f)
+        assertEquals(238.125f, element.contentTransform?.offsetX ?: 0f, 0.01f)
+        assertEquals(350f, element.contentTransform?.offsetY ?: 0f, 0.01f)
+        assertEquals(2.91f, element.contentTransform?.scale ?: 0f, 0.01f)
+        assertEquals(12f, element.contentTransform?.rotation ?: 0f, 0.01f)
+        assertEquals(null, viewModel.uiState.value.pendingDiyElementImportId)
+        assertTrue(viewModel.uiState.value.layers.none { it is PhotoLayer })
+    }
+
+    @Test
+    fun `diy slot image transform pans and scales within placeholder bounds`() = runTest(dispatcher) {
+        val repository = FakeEditorDesignRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.bindProject(sampleProjectWithPlaceholder())
+        viewModel.setDiySlotImage(
+            slotId = "placeholder_1",
+            localPath = "/tmp/slot_photo.jpg"
+        )
+
+        viewModel.updateDiySlotImageTransform(
+            slotId = "placeholder_1",
+            panXDelta = 999f,
+            panYDelta = -999f,
+            scaleMultiplier = 2f
+        )
+
+        val element = viewModel.uiState.value.templateSnapshot?.elements?.single()
+            ?: error("Missing DIY element")
+        assertEquals(4.36f, element.contentTransform?.scale ?: 0f, 0.01f)
+        assertEquals(1189f, element.contentTransform?.offsetX ?: 0f, 0.01f)
+        assertEquals(-649f, element.contentTransform?.offsetY ?: 0f, 0.01f)
+        assertTrue(viewModel.uiState.value.layers.none { it is PhotoLayer })
     }
 
     @Test
@@ -702,6 +791,42 @@ class EditorViewModelTest {
         )
     }
 
+    private fun sampleProjectWithPlaceholder(): EditorProject {
+        return sampleProject().copy(
+            source = EditorProjectSource.Diy(
+                templateId = "template_1",
+                templateSnapshot = DiyTemplateSnapshot(
+                    width = 1080,
+                    height = 1920,
+                    elements = listOf(
+                        DiyTemplateElementSnapshot(
+                            id = "placeholder_1",
+                            type = "IMAGE",
+                            x = 120f,
+                            y = 220f,
+                            width = 360f,
+                            height = 480f,
+                            rotation = 12f,
+                            zIndex = 3,
+                            previewPathOrUrl = "/tmp/preview.webp"
+                        )
+                    )
+                )
+            ),
+            placeholders = listOf(
+                PhotoPlaceholderLayer(
+                    id = "placeholder_1",
+                    x = 120f,
+                    y = 220f,
+                    width = 360f,
+                    height = 480f,
+                    rotation = 12f,
+                    zIndex = 3
+                )
+            )
+        )
+    }
+
     private fun sampleAnimatedStickerProject(): EditorProject {
         return sampleProject().copy(
             layers = listOf(
@@ -735,10 +860,12 @@ private fun createViewModel(
     repository: FakeEditorDesignRepository,
     backgroundRepository: FakeBackgroundCreateRepository = FakeBackgroundCreateRepository(),
     stickerRepository: FakeStickerRepository = FakeStickerRepository(),
-    designAssetExporter: FakeDesignAssetExporter = FakeDesignAssetExporter()
+    designAssetExporter: FakeDesignAssetExporter = FakeDesignAssetExporter(),
+    diyRepository: FakeDiyRepository = FakeDiyRepository()
 ): EditorViewModel {
     return EditorViewModel(
         createDesignDraftUseCase = CreateDesignDraftUseCase(repository),
+        buildDiyEditorProjectUseCase = BuildDiyEditorProjectUseCase(diyRepository),
         getUserDesignUseCase = GetUserDesignUseCase(repository),
         getDesignProjectUseCase = GetDesignProjectUseCase(repository),
         saveDesignProjectUseCase = SaveDesignProjectUseCase(repository),
@@ -750,6 +877,71 @@ private fun createViewModel(
         getBackgroundCreateItemsUseCase = GetBackgroundCreateItemsUseCase(backgroundRepository),
         getStickersUseCase = GetStickersUseCase(stickerRepository)
     )
+}
+
+private class FakeDiyRepository : DiyRepository {
+    private val templates = MutableStateFlow(
+        listOf(
+            DiyTemplate(
+                id = "template_1",
+                type = DiyTemplateType.DIY_STATIC,
+                rank = 1,
+                thumbUrl = "https://cdn/thumb.webp",
+                diyDataUrl = "https://cdn/template_1/data.json",
+                diyAnimationUrl = null,
+                isFavorite = false
+            )
+        )
+    )
+
+    override fun observeDiyTemplates(): Flow<List<DiyTemplate>> = templates
+
+    override suspend fun refreshDiyTemplates(): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun toggleFavorite(templateId: String): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun getDiyTemplateData(
+        templateId: String,
+        diyDataUrl: String,
+        dataZipUrl: String?
+    ): AppResult<DiyTemplateData> {
+        return AppResult.Success(
+            DiyTemplateData(
+                width = 1080,
+                height = 1920,
+                background = "#FFFFFF",
+                elements = listOf(
+                    DiyElement(
+                        type = DiyElementType.IMAGE,
+                        x = 120f,
+                        y = 220f,
+                        width = 360f,
+                        height = 480f,
+                        rotation = 0f,
+                        zIndex = 1,
+                        srcName = "",
+                        assetUrl = null
+                    )
+                ),
+                placeholders = listOf(
+                    PhotoPlaceholder(
+                        id = "placeholder_1",
+                        x = 120f,
+                        y = 220f,
+                        width = 360f,
+                        height = 480f,
+                        rotation = 0f,
+                        zIndex = 1
+                    )
+                )
+            )
+        )
+    }
+
+    override suspend fun getDiyAnimationRaw(
+        templateId: String,
+        animationUrl: String
+    ): AppResult<DiyAnimationRaw> = throw UnsupportedOperationException()
 }
 
 private class FakeSpecialTextLocalDataSource : SpecialTextLocalDataSource {

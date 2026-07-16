@@ -21,7 +21,9 @@ sealed interface EditorProjectSource {
     @Serializable
     data class Diy(
         val templateId: String,
-        val templateSnapshot: DiyTemplateSnapshot
+        val templateSnapshot: DiyTemplateSnapshot,
+        val isLive: Boolean = false,
+        val diyAnimationUrl: String? = null
     ) : EditorProjectSource
 
     @Serializable
@@ -90,7 +92,19 @@ data class DiyTemplateElementSnapshot(
     val height: Float,
     val rotation: Float,
     val zIndex: Int,
-    val assetUrl: String? = null
+    val assetUrl: String? = null,
+    val title: String = "",
+    val fontSize: Float = 50f,
+    val fontColor: String = "#000000",
+    val fontFamilyIndex: Int = 0,
+    val transform: LayerTransform? = null,
+    val localImagePath: String? = null,
+    val crop: CropSpec? = null,
+    val contentBaseWidth: Float? = null,
+    val contentBaseHeight: Float? = null,
+    val contentTransform: LayerTransform? = null,
+    val maskPathOrUrl: String? = null,
+    val previewPathOrUrl: String? = null
 )
 
 @Serializable
@@ -139,6 +153,8 @@ data class StickerLayer(
     val assetPathOrUrl: String,
     val animatedAssetPathOrUrl: String? = null,
     val isAnimated: Boolean = false,
+    val renderWidth: Float? = null,
+    val renderHeight: Float? = null,
     override val zIndex: Int,
     override val transform: LayerTransform,
     override val isLocked: Boolean,
@@ -303,5 +319,7 @@ data class PhotoPlaceholderLayer(
     val width: Float,
     val height: Float,
     val rotation: Float,
-    val zIndex: Int
+    val zIndex: Int,
+    val maskPathOrUrl: String? = null,
+    val previewPathOrUrl: String? = null
 )

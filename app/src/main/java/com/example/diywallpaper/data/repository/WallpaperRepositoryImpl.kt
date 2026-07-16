@@ -92,6 +92,7 @@ class WallpaperRepositoryImpl @Inject constructor(
                         rank = template.rank,
                         thumbUrl = template.thumbUrl,
                         diyDataUrl = template.diyDataUrl,
+                        dataZipUrl = template.dataZipUrl,
                         diyAnimationUrl = template.diyAnimationUrl,
                         isFavorite = diyFavoriteFlags[template.id] ?: template.isFavorite,
                         diyDataLocalPath = null,

@@ -12,6 +12,8 @@ data class RemoteItemDto(
     val data: String? = null,
     val preview: String? = null,
     val content: String? = null,
+    @SerialName("data_zip")
+    val dataZip: String? = null,
     @SerialName("diy_data")
     val diyData: String? = null,
     @SerialName("diy_animation")

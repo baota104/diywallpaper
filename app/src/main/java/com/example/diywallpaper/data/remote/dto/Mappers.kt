@@ -81,6 +81,7 @@ fun RemoteItemDto.toDiyTemplateDomainOrNull(): DiyTemplate? {
         rank = rank,
         thumbUrl = thumb.orEmpty(),
         diyDataUrl = validDiyData,
+        dataZipUrl = dataZip?.takeIf { it.isNotBlank() },
         diyAnimationUrl = diyAnimation?.takeIf { it.isNotBlank() },
         isFavorite = false
     )
@@ -127,12 +128,13 @@ fun DiyTemplateDataDto.toDomain(diyDataUrl: String): DiyTemplateData {
         elements = sortedElements.map { it.toDomain(diyDataUrl) },
         placeholders = sortedElements
             .filter { it.type == "Image" }
-            .map { it.toPlaceholder() }
+            .map { it.toPlaceholder(diyDataUrl) }
     )
 }
 
 fun DiyElementDto.toDomain(diyDataUrl: String): DiyElement {
     val mappedType = when (type) {
+        "Text" -> DiyElementType.TEXT
         "Picture" -> DiyElementType.PICTURE
         "Image" -> DiyElementType.IMAGE
         else -> DiyElementType.UNKNOWN
@@ -148,15 +150,24 @@ fun DiyElementDto.toDomain(diyDataUrl: String): DiyElement {
         zIndex = layoutIndex,
         srcName = srcName,
         assetUrl = when (mappedType) {
-            DiyElementType.PICTURE -> srcName.takeIf { it.isNotBlank() }?.let {
+            DiyElementType.IMAGE,
+            DiyElementType.TEXT -> null
+            else -> srcName.takeIf { it.isNotBlank() }?.let {
                 resolveDiyAssetUrl(diyDataUrl, it)
             }
-            else -> null
+        },
+        title = title,
+        fontSize = fontSize,
+        fontColor = fontColor,
+        fontFamilyIndex = fontFamilyIndex,
+        maskName = maskName,
+        maskUrl = maskName.takeIf { it.isNotBlank() }?.let {
+            resolveDiyAssetUrl(diyDataUrl, it)
         }
     )
 }
 
-fun DiyElementDto.toPlaceholder(): PhotoPlaceholder {
+fun DiyElementDto.toPlaceholder(diyDataUrl: String): PhotoPlaceholder {
     return PhotoPlaceholder(
         id = buildPlaceholderId(this),
         x = x,
@@ -164,7 +175,15 @@ fun DiyElementDto.toPlaceholder(): PhotoPlaceholder {
         width = width,
         height = height,
         rotation = angle,
-        zIndex = layoutIndex
+        zIndex = layoutIndex,
+        maskName = maskName,
+        maskUrl = maskName.takeIf { it.isNotBlank() }?.let {
+            resolveDiyAssetUrl(diyDataUrl, it)
+        },
+        previewName = srcName,
+        previewUrl = srcName.takeIf { it.isNotBlank() }?.let {
+            resolveDiyAssetUrl(diyDataUrl, it)
+        }
     )
 }
 
@@ -182,6 +201,9 @@ fun resolveDiyBackgroundValue(diyDataUrl: String, background: String): DiyBackgr
     }
     if (value.startsWith("http://") || value.startsWith("https://")) {
         return DiyBackgroundValue.RemoteUrl(value)
+    }
+    if (value.startsWith("/") || value.startsWith("file:/")) {
+        return DiyBackgroundValue.AssetUrl(value)
     }
 
     return DiyBackgroundValue.AssetUrl(resolveDiyAssetUrl(diyDataUrl, value))

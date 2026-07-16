@@ -10,6 +10,7 @@ data class DiyTemplateEntity(
     val rank: Int,
     val thumbUrl: String,
     val diyDataUrl: String,
+    val dataZipUrl: String?,
     val diyAnimationUrl: String?,
     val isFavorite: Boolean,
     val diyDataLocalPath: String?,

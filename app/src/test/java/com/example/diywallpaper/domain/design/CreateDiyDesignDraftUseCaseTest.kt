@@ -9,6 +9,7 @@ import com.example.diywallpaper.domain.model.DiyTemplateType
 import com.example.diywallpaper.domain.model.PhotoPlaceholder
 import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.UserDesign
 import com.example.diywallpaper.domain.repository.UserDesignRepository
 import com.example.diywallpaper.domain.usecase.design.CreateDesignDraftUseCase
@@ -25,7 +26,7 @@ import org.junit.Test
 class CreateDiyDesignDraftUseCaseTest {
 
     @Test
-    fun `toEditorProject maps diy template data into locked base layers and placeholders`() {
+    fun `toEditorProject maps diy template data into fixed snapshot and placeholders`() {
         val template = sampleTemplate()
         val templateData = sampleTemplateData(background = "bg.webp")
 
@@ -38,9 +39,15 @@ class CreateDiyDesignDraftUseCaseTest {
         assertEquals("design_diy_1", project.id)
         assertEquals(1080, project.canvas.width)
         assertTrue(project.background is EditorBackground.ApiImage)
-        assertEquals(1, project.layers.size)
+        assertEquals(0, project.layers.size)
         assertEquals(1, project.placeholders.size)
-        assertTrue(project.layers.first().isLocked)
+        val source = project.source as EditorProjectSource.Diy
+        val pictureElement = source.templateSnapshot.elements.first { it.type == "PICTURE" }
+        assertEquals(300f, pictureElement.width)
+        assertEquals(400f, pictureElement.height)
+        assertEquals("https://cdn/frame.png", pictureElement.assetUrl)
+        assertEquals("https://cdn/mask1.png", project.placeholders.first().maskPathOrUrl)
+        assertEquals("https://cdn/slot.png", project.placeholders.first().previewPathOrUrl)
     }
 
     @Test
@@ -110,7 +117,9 @@ class CreateDiyDesignDraftUseCaseTest {
                     rotation = 0f,
                     zIndex = 3,
                     srcName = "slot.png",
-                    assetUrl = null
+                    assetUrl = null,
+                    maskName = "mask1.png",
+                    maskUrl = "https://cdn/mask1.png"
                 )
             ),
             placeholders = listOf(
@@ -121,7 +130,11 @@ class CreateDiyDesignDraftUseCaseTest {
                     width = 200f,
                     height = 240f,
                     rotation = 0f,
-                    zIndex = 3
+                    zIndex = 3,
+                    maskName = "mask1.png",
+                    maskUrl = "https://cdn/mask1.png",
+                    previewName = "slot.png",
+                    previewUrl = "https://cdn/slot.png"
                 )
             )
         )

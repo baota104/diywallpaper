@@ -18,6 +18,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
@@ -30,6 +31,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.text.TextPaint
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.content.res.ResourcesCompat
@@ -42,12 +44,16 @@ import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
+import com.example.diywallpaper.domain.model.design.DiyTemplateElementSnapshot
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
 import com.example.diywallpaper.domain.model.design.EditorLayer
 import com.example.diywallpaper.domain.model.design.EditorProject
+import com.example.diywallpaper.domain.model.design.EditorProjectSource
+import com.example.diywallpaper.domain.model.design.LayerTransform
 import com.example.diywallpaper.domain.model.design.PhotoLayer
+import com.example.diywallpaper.domain.model.design.PhotoPlaceholderLayer
 import com.example.diywallpaper.domain.model.design.StickerLayer
 import com.example.diywallpaper.domain.model.design.StickerTrailRotationMode
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
@@ -55,7 +61,9 @@ import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
+import com.example.diywallpaper.domain.model.design.proceduralAnimatedTransform
 import com.example.diywallpaper.domain.model.design.renderBounds
+import com.example.diywallpaper.domain.model.design.renderSize
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.domain.repository.DesignVideoExporter
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
@@ -71,7 +79,7 @@ import kotlin.math.roundToInt
 
 @Singleton
 class AndroidDesignVideoExporter @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient
 ) : DesignVideoExporter {
     private val patternBrushBitmapCache = mutableMapOf<String, Bitmap?>()
@@ -220,13 +228,29 @@ class AndroidDesignVideoExporter @Inject constructor(
         canvas.scale(viewport.scale, viewport.scale)
         try {
             drawBackground(canvas, project.background, assets, designWidth, designHeight)
+            val diySource = project.source as? EditorProjectSource.Diy
+            if (diySource != null) {
+                drawDiyTemplateContent(
+                    canvas = canvas,
+                    project = project,
+                    source = diySource,
+                    assets = assets,
+                    frameTimeMs = frameIndex.frameTimeMs()
+                )
+            }
             project.layers
                 .filterNot(EditorLayer::isHidden)
                 .sortedBy(EditorLayer::zIndex)
                 .forEach { layer ->
                     val rendered = when (layer) {
                         is StickerLayer -> drawSticker(canvas, layer, assets, frameIndex, scaleX = 1f, scaleY = 1f)
-                        is PhotoLayer -> drawPhoto(canvas, layer, assets, scaleX = 1f, scaleY = 1f)
+                        is PhotoLayer -> drawPhoto(
+                            canvas = canvas,
+                            layer = layer,
+                            assets = assets,
+                            scaleX = 1f,
+                            scaleY = 1f
+                        )
                         is TextLayer -> drawText(canvas, layer, scaleX = 1f, scaleY = 1f)
                         is DrawLayer -> {
                             if (layer.drawData.isBrushStackRenderable()) {
@@ -248,6 +272,131 @@ class AndroidDesignVideoExporter @Inject constructor(
             canvas.restore()
         }
         return renderedLayers
+    }
+
+    private fun drawDiyTemplateContent(
+        canvas: Canvas,
+        project: EditorProject,
+        source: EditorProjectSource.Diy,
+        assets: RenderAssets,
+        frameTimeMs: Long
+    ) {
+        source.templateSnapshot.elements
+            .sortedBy { it.zIndex }
+            .forEach { element ->
+                when {
+                    element.isTextElement() -> {
+                        drawDiyTemplateText(canvas, source.templateId, element, source.isLive, frameTimeMs)
+                    }
+
+                    element.isAssetElement() -> {
+                        drawDiyTemplatePicture(canvas, source.templateId, element, source.isLive, frameTimeMs, assets)
+                    }
+
+                    element.isImageElement() -> drawDiyImageElement(canvas, source.templateId, element, source.isLive, frameTimeMs, assets)
+                }
+            }
+    }
+
+    private fun drawDiyTemplateText(
+        canvas: Canvas,
+        templateId: String,
+        element: DiyTemplateElementSnapshot,
+        isAnimating: Boolean,
+        frameTimeMs: Long
+    ) {
+        val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+        val rect = RectF(
+            transform.offsetX,
+            transform.offsetY,
+            transform.offsetX + element.width * transform.scale,
+            transform.offsetY + element.height * transform.scale
+        )
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = parseColor(element.fontColor, Color.BLACK)
+            textSize = (element.fontSize * transform.scale).coerceAtLeast(1f)
+            typeface = Typeface.DEFAULT
+        }
+        canvas.save()
+        canvas.rotate(transform.rotation, rect.centerX(), rect.centerY())
+        canvas.drawText(element.title, rect.left, rect.top + paint.textSize, paint)
+        canvas.restore()
+    }
+
+    private fun drawDiyTemplatePicture(
+        canvas: Canvas,
+        templateId: String,
+        element: DiyTemplateElementSnapshot,
+        isAnimating: Boolean,
+        frameTimeMs: Long,
+        assets: RenderAssets
+    ) {
+        val bitmap = assets.bitmaps[element.assetUrl] ?: return
+        val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+        val rect = RectF(
+            transform.offsetX,
+            transform.offsetY,
+            transform.offsetX + element.width * transform.scale,
+            transform.offsetY + element.height * transform.scale
+        )
+        canvas.save()
+        canvas.rotate(transform.rotation, rect.centerX(), rect.centerY())
+        drawBitmapFit(canvas, bitmap, rect, alpha = 1f)
+        canvas.restore()
+    }
+
+    private fun drawDiyImageElement(
+        canvas: Canvas,
+        templateId: String,
+        element: DiyTemplateElementSnapshot,
+        isAnimating: Boolean,
+        frameTimeMs: Long,
+        assets: RenderAssets
+    ) {
+        val previewSource = element.localImagePath?.takeUnless { it.isBlank() }
+            ?: element.previewPathOrUrl
+        val previewBitmap = assets.bitmaps[previewSource] ?: return
+        val placeholderRect = RectF(
+            element.x,
+            element.y,
+            element.x + element.width,
+            element.y + element.height
+        )
+        val maskBitmap = assets.bitmaps[element.maskPathOrUrl]
+        val checkpoint = maskBitmap?.let {
+            canvas.saveLayer(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), null)
+        }
+        canvas.save()
+        canvas.rotate(element.rotation, placeholderRect.centerX(), placeholderRect.centerY())
+        canvas.clipRect(placeholderRect)
+        if (element.localImagePath.isNullOrBlank()) {
+            drawBitmapCover(canvas, previewBitmap, placeholderRect)
+        } else {
+            val transform = element.proceduralAnimatedTransform(templateId, frameTimeMs, isAnimating)
+            val baseWidth = element.contentBaseWidth ?: element.width
+            val baseHeight = element.contentBaseHeight ?: element.height
+            val contentRect = RectF(
+                transform.offsetX,
+                transform.offsetY,
+                transform.offsetX + baseWidth * transform.scale,
+                transform.offsetY + baseHeight * transform.scale
+            )
+            canvas.rotate(transform.rotation - element.rotation, contentRect.centerX(), contentRect.centerY())
+            drawBitmapCrop(canvas, previewBitmap, element.crop, contentRect, alpha = 1f)
+        }
+        canvas.restore()
+
+        if (maskBitmap != null && checkpoint != null) {
+            val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            }
+            canvas.save()
+            canvas.rotate(element.rotation, placeholderRect.centerX(), placeholderRect.centerY())
+            canvas.drawBitmap(maskBitmap, null, placeholderRect, maskPaint)
+            canvas.restore()
+            maskPaint.xfermode = null
+            canvas.restoreToCount(checkpoint)
+        }
     }
 
     private fun drawBackground(
@@ -290,7 +439,7 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleY: Float
     ): Boolean {
         val source = layer.animatedAssetPathOrUrl ?: layer.assetPathOrUrl
-        val size = stickerRenderSize()
+        val size = layer.renderSize()
         val rect = centerScaledLayerRect(
             offsetX = layer.transform.offsetX,
             offsetY = layer.transform.offsetY,
@@ -747,6 +896,19 @@ class AndroidDesignVideoExporter @Inject constructor(
             is EditorBackground.LocalImage -> load(background.localPath)
             else -> Unit
         }
+        (project.source as? EditorProjectSource.Diy)
+            ?.templateSnapshot
+            ?.elements
+            ?.forEach { element ->
+                if (element.isAssetElement()) {
+                    element.assetUrl?.let { load(it) }
+                }
+                if (element.isImageElement()) {
+                    element.localImagePath?.let { load(it) }
+                    element.previewPathOrUrl?.let { load(it) }
+                    element.maskPathOrUrl?.let { load(it) }
+                }
+            }
         project.layers.forEach { layer ->
             when (layer) {
                 is StickerLayer -> load(layer.animatedAssetPathOrUrl ?: layer.assetPathOrUrl, preferMovie = layer.isAnimated)
@@ -759,6 +921,10 @@ class AndroidDesignVideoExporter @Inject constructor(
                 }
                 else -> Unit
             }
+        }
+        project.placeholders.forEach { placeholder ->
+            placeholder.maskPathOrUrl?.let { load(it) }
+            placeholder.previewPathOrUrl?.let { load(it) }
         }
         return RenderAssets(bitmaps = bitmaps, movies = movies)
     }
@@ -888,6 +1054,50 @@ class AndroidDesignVideoExporter @Inject constructor(
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
 
+    private fun DiyTemplateElementSnapshot.isTextElement(): Boolean {
+        return type.equals("TEXT", ignoreCase = true) ||
+            type.equals("Text", ignoreCase = true)
+    }
+
+    private fun DiyTemplateElementSnapshot.isAssetElement(): Boolean {
+        return !isImageElement() &&
+            !isTextElement() &&
+            !assetUrl.isNullOrBlank()
+    }
+
+    private fun DiyTemplateElementSnapshot.isImageElement(): Boolean {
+        return type.equals("IMAGE", ignoreCase = true) ||
+            type.equals("Image", ignoreCase = true)
+    }
+
+    private fun DiyTemplateElementSnapshot.matchPlaceholder(
+        placeholders: List<PhotoPlaceholderLayer>
+    ): PhotoPlaceholderLayer? {
+        return placeholders.firstOrNull { placeholder ->
+            placeholder.zIndex == zIndex &&
+                placeholder.x == x &&
+                placeholder.y == y &&
+                placeholder.width == width &&
+            placeholder.height == height
+        } ?: placeholders.firstOrNull { it.zIndex == zIndex }
+    }
+
+    private fun DiyTemplateElementSnapshot.editTransform(): LayerTransform {
+        if (isFixedTemplateElement()) {
+            return LayerTransform(x, y, 1f, rotation)
+        }
+        return if (isImageElement() && localImagePath != null) {
+            contentTransform ?: LayerTransform(x, y, 1f, rotation)
+        } else {
+            transform ?: LayerTransform(x, y, 1f, rotation)
+        }
+    }
+
+    private fun DiyTemplateElementSnapshot.isFixedTemplateElement(): Boolean {
+        return type.equals("PICTURE", ignoreCase = true) ||
+            type.equals("Picture", ignoreCase = true)
+    }
+
     private fun DrawLayerData.isBrushStackRenderable(): Boolean {
         return this is DrawLayerData.FreeStroke ||
             this is DrawLayerData.EraseStroke ||
@@ -932,6 +1142,8 @@ class AndroidDesignVideoExporter @Inject constructor(
     }
 
     private fun Int.presentationTimeNs(): Long = this * 1_000_000_000L / FRAME_RATE
+
+    private fun Int.frameTimeMs(): Long = this * 1_000L / FRAME_RATE
 
     private data class VideoOutputSize(
         val width: Int,

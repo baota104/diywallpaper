@@ -9,5 +9,11 @@ data class DiyElement(
     val rotation: Float,
     val zIndex: Int,
     val srcName: String,
-    val assetUrl: String?
+    val assetUrl: String?,
+    val title: String = "",
+    val fontSize: Float = 50f,
+    val fontColor: String = "#000000",
+    val fontFamilyIndex: Int = 0,
+    val maskName: String = "",
+    val maskUrl: String? = null
 )

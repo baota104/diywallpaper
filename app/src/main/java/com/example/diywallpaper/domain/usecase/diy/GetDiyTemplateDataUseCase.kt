@@ -10,11 +10,13 @@ class GetDiyTemplateDataUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(
         templateId: String,
-        diyDataUrl: String
+        diyDataUrl: String,
+        dataZipUrl: String? = null
     ): AppResult<DiyTemplateData> {
         return diyRepository.getDiyTemplateData(
             templateId = templateId,
-            diyDataUrl = diyDataUrl
+            diyDataUrl = diyDataUrl,
+            dataZipUrl = dataZipUrl
         )
     }
 }

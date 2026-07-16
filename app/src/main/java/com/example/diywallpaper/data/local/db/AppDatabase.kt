@@ -25,7 +25,7 @@ import com.example.diywallpaper.data.local.entity.WallpaperItemEntity
         StickerItemEntity::class,
         UserDesignEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +67,14 @@ abstract class AppDatabase : RoomDatabase() {
                         "isDeleted INTEGER NOT NULL, " +
                         "schemaVersion INTEGER NOT NULL, " +
                         "PRIMARY KEY(id))"
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE diy_templates ADD COLUMN dataZipUrl TEXT"
                 )
             }
         }
