@@ -34,7 +34,7 @@ fun EditorToolSheet(
     onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
-    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float, preset: BrushPresetType, patternBrushName: String?) -> Unit,
     onSelectLayer: (String?) -> Unit,
     onMoveLayer: (layerId: String, targetIndex: Int) -> Unit,
     onRemoveSelectedLayer: () -> Unit,

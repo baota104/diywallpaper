@@ -104,7 +104,7 @@ fun HomeWallpaperGrid(
     ) {
         items(
             count = feedItems.size,
-            key = { index -> feedItems[index].id },
+            key = { index -> feedItems[index].stableGridKey() },
             contentType = { index ->
                 when (val item = feedItems[index]) {
                     is HomeFeedItem.DiyEntry -> "diy"
@@ -143,5 +143,12 @@ fun HomeWallpaperGrid(
                 }
             }
         }
+    }
+}
+
+private fun HomeFeedItem.stableGridKey(): String {
+    return when (this) {
+        is HomeFeedItem.DiyEntry -> "diy_$id"
+        is HomeFeedItem.WallpaperEntry -> "wallpaper_$id"
     }
 }

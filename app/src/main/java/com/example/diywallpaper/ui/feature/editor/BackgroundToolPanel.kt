@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.BackgroundCreateItem
+import com.example.diywallpaper.ui.components.editor.EditorColorPickerPanel
+import com.example.diywallpaper.ui.components.editor.EditorColorRow
 import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
 import com.example.diywallpaper.ui.theme.Primary
 import com.example.diywallpaper.ui.theme.PrimarySoft
@@ -76,10 +76,12 @@ fun BackgroundToolPanel(
     var selectedColorHex by remember { mutableStateOf("#FFFFFF") }
 
     if (showColorPicker) {
-        BackgroundColorPickerPanel(
+        EditorColorPickerPanel(
             selectedColorHex = selectedColorHex,
-            onApplySolidBackground = onApplySolidBackground,
-            onColorSelected = { selectedColorHex = it },
+            onColorSelected = {
+                selectedColorHex = it
+                onApplySolidBackground(it)
+            },
             onDone = { showColorPicker = false },
             modifier = modifier
         )
@@ -97,30 +99,14 @@ fun BackgroundToolPanel(
 
         ToolSectionLabel(text = stringResource(id = R.string.editor_panel_colors))
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.horizontalScroll(rememberScrollState())
-        ) {
-            NoneColorSwatch(
-                selected = selectedColorHex == "#FFFFFF",
-                onClick = {
-                    selectedColorHex = "#FFFFFF"
-                    onApplySolidBackground("#FFFFFF")
-                }
-            )
-            ColorPickerSwatch(onClick = { showColorPicker = true })
-            backgroundColorTokens.forEach { token ->
-                ColorSwatch(
-                    color = token.swatch,
-                    selected = token.hex == selectedColorHex,
-                    onClick = {
-                        selectedColorHex = token.hex
-                        onApplySolidBackground(token.hex)
-                    }
-                )
+        EditorColorRow(
+            selectedColorHex = selectedColorHex,
+            onOpenColorPicker = { showColorPicker = true },
+            onColorSelected = {
+                selectedColorHex = it
+                onApplySolidBackground(it)
             }
-        }
+        )
 
         ToolSectionLabel(text = stringResource(id = R.string.editor_panel_templates))
 

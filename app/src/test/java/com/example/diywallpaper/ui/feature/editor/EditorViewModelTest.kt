@@ -1,6 +1,8 @@
 package com.example.diywallpaper.ui.feature.editor
 
 import com.example.diywallpaper.core.result.AppResult
+import com.example.diywallpaper.data.local.datasource.SpecialTextLocalDataSource
+import com.example.diywallpaper.data.local.dto.SpecialTextDto
 import com.example.diywallpaper.domain.model.BackgroundCreateItem
 import com.example.diywallpaper.domain.model.StickerItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
@@ -744,10 +746,22 @@ private fun createViewModel(
         renameDesignUseCase = RenameDesignUseCase(repository),
         updateDesignAssetsUseCase = UpdateDesignAssetsUseCase(repository),
         deleteDesignUseCase = DeleteDesignUseCase(repository),
-        getEditorTextLibraryUseCase = GetEditorTextLibraryUseCase(),
+        getEditorTextLibraryUseCase = GetEditorTextLibraryUseCase(FakeSpecialTextLocalDataSource()),
         getBackgroundCreateItemsUseCase = GetBackgroundCreateItemsUseCase(backgroundRepository),
         getStickersUseCase = GetStickersUseCase(stickerRepository)
     )
+}
+
+private class FakeSpecialTextLocalDataSource : SpecialTextLocalDataSource {
+    override fun getSpecialTexts(): List<SpecialTextDto> {
+        return listOf(
+            SpecialTextDto(
+                id = 1,
+                rank = 1,
+                data = "°❀⋆.ೃ༔*:･"
+            )
+        )
+    }
 }
 
 private class FakeEditorDesignRepository : UserDesignRepository {

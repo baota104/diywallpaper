@@ -38,6 +38,8 @@ import com.example.diywallpaper.ui.theme.PrimaryGradient
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorTopBar(
+    canUndo: Boolean,
+    canRedo: Boolean,
     onBackClick: () -> Unit,
     onUndoClick: () -> Unit,
     onRedoClick: () -> Unit,
@@ -73,19 +75,27 @@ fun EditorTopBar(
                 }
             },
             actions = {
+                val activeActionColor = MaterialTheme.colorScheme.onSurfaceVariant
+                val inactiveActionColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.32f)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onUndoClick) {
+                    IconButton(
+                        onClick = onUndoClick,
+                        enabled = canUndo
+                    ) {
                         Icon(
                             imageVector = Icons.Rounded.Undo,
                             contentDescription = stringResource(id = R.string.editor_undo),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (canUndo) activeActionColor else inactiveActionColor
                         )
                     }
-                    IconButton(onClick = onRedoClick) {
+                    IconButton(
+                        onClick = onRedoClick,
+                        enabled = canRedo
+                    ) {
                         Icon(
                             imageVector = Icons.Rounded.Redo,
                             contentDescription = stringResource(id = R.string.editor_redo),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (canRedo) activeActionColor else inactiveActionColor
                         )
                     }
                     IconButton(onClick = onPreviewClick) {

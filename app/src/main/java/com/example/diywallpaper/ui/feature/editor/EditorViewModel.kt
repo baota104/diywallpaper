@@ -185,12 +185,16 @@ class EditorViewModel @Inject constructor(
     fun configureBrushTool(
         erase: Boolean,
         colorHex: String,
-        brushSize: Float
+        brushSize: Float,
+        preset: BrushPresetType = activeBrushConfig?.preset ?: BrushPresetType.SOLID,
+        patternBrushName: String? = null
     ) {
         val config = BrushToolConfig(
             erase = erase,
             colorHex = colorHex,
-            brushSize = brushSize
+            brushSize = brushSize,
+            preset = preset.takeUnless { erase } ?: BrushPresetType.SOLID,
+            patternBrushName = patternBrushName
         )
         activeBrushConfig = config
         activeTextBrushConfig = null
@@ -209,12 +213,16 @@ class EditorViewModel @Inject constructor(
     fun updateBrushToolConfig(
         erase: Boolean,
         colorHex: String,
-        brushSize: Float
+        brushSize: Float,
+        preset: BrushPresetType = activeBrushConfig?.preset ?: BrushPresetType.SOLID,
+        patternBrushName: String? = activeBrushConfig?.patternBrushName
     ) {
         activeBrushConfig = BrushToolConfig(
             erase = erase,
             colorHex = colorHex,
-            brushSize = brushSize
+            brushSize = brushSize,
+            preset = preset.takeUnless { erase } ?: BrushPresetType.SOLID,
+            patternBrushName = patternBrushName.takeUnless { erase }
         )
         activeTextBrushConfig = null
         _uiState.update {
@@ -284,6 +292,7 @@ class EditorViewModel @Inject constructor(
                     addBrushStroke(
                         points = points,
                         colorHex = config.colorHex,
+                        brushStyle = config.toBrushStyleSpec(),
                         strokeWidth = config.brushSize
                     )
                 }
@@ -441,7 +450,7 @@ class EditorViewModel @Inject constructor(
     ) {
         val layer = TextLayer(
             id = generateLayerId("text"),
-            text = text,
+            text = text.take(EDITOR_TEXT_MAX_LENGTH),
             style = style,
             zIndex = nextZIndex(),
             transform = transform,
@@ -460,7 +469,7 @@ class EditorViewModel @Inject constructor(
             val updatedLayers = project.layers.map { layer ->
                 if (layer is TextLayer && layer.id == layerId) {
                     layer.copy(
-                        text = text ?: layer.text,
+                        text = (text ?: layer.text).take(EDITOR_TEXT_MAX_LENGTH),
                         style = style ?: layer.style
                     )
                 } else {
@@ -544,7 +553,7 @@ class EditorViewModel @Inject constructor(
 
     fun addTextPresetLayer(preset: EditorTextPreset) {
         addTextLayer(
-            text = preset.previewText,
+            text = preset.previewText.take(EDITOR_TEXT_MAX_LENGTH),
             style = preset.style
         )
     }
@@ -643,7 +652,9 @@ class EditorViewModel @Inject constructor(
             redoStack = historyState.redoStack + current
         )
         _uiState.value = previous.toUiState(historyState)
-        scheduleAutosave(previous)
+        if (_uiState.value.isPersisted) {
+            scheduleAutosave(previous)
+        }
     }
 
     fun redo() {
@@ -655,11 +666,15 @@ class EditorViewModel @Inject constructor(
             redoStack = historyState.redoStack.dropLast(1)
         )
         _uiState.value = next.toUiState(historyState)
-        scheduleAutosave(next)
+        if (_uiState.value.isPersisted) {
+            scheduleAutosave(next)
+        }
     }
 
     fun saveNow() {
-        historyState.current?.let(::persistProject)
+        if (_uiState.value.isPersisted) {
+            historyState.current?.let(::persistProject)
+        }
     }
 
     fun preparePreviewNavigation() {
@@ -675,28 +690,22 @@ class EditorViewModel @Inject constructor(
                     pendingPreviewDesignId = null
                 )
             }
-            val designId = if (_uiState.value.isPersisted) {
-                project.id
-            } else {
-                when (val createResult = createDesignDraftUseCase(project, currentTitle)) {
-                    is AppResult.Success -> {
-                        _uiState.update { state -> state.copy(isPersisted = true) }
-                        createResult.data
+            val persistedProject = when (val persistResult = ensurePersistedProject(project)) {
+                is AppResult.Success -> persistResult.data
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isGeneratingAssets = false,
+                            errorMessage = persistResult.error.toString().substringBefore("(")
+                        )
                     }
-
-                    is AppResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isSaving = false,
-                                isGeneratingAssets = false,
-                                errorMessage = createResult.error.toString().substringBefore("(")
-                            )
-                        }
-                        return@launch
-                    }
+                    return@launch
                 }
             }
-            when (val saveResult = saveDesignProjectUseCase(project, currentTitle)) {
+            val designId = persistedProject.id
+
+            when (val saveResult = saveDesignProjectUseCase(persistedProject, currentTitle)) {
                 is AppResult.Success -> Unit
                 is AppResult.Error -> {
                     _uiState.update {
@@ -710,7 +719,7 @@ class EditorViewModel @Inject constructor(
                 }
             }
 
-            if (project.hasAnimatedContent()) {
+            if (persistedProject.hasAnimatedContent()) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
@@ -723,7 +732,7 @@ class EditorViewModel @Inject constructor(
                 return@launch
             }
 
-            when (val result = generateDesignAssetsUseCase(project)) {
+            when (val result = generateDesignAssetsUseCase(persistedProject)) {
                 is AppResult.Success -> {
                     when (
                         val assetUpdateResult = updateDesignAssetsUseCase(
@@ -777,8 +786,109 @@ class EditorViewModel @Inject constructor(
         }
     }
 
+    fun saveAndExit() {
+        val project = historyState.current ?: return
+        viewModelScope.launch {
+            autosaveJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    isSaving = true,
+                    isGeneratingAssets = true,
+                    errorMessage = null,
+                    saveMessage = null,
+                    pendingExitAfterSave = false
+                )
+            }
+            val persistedProject = when (val persistResult = ensurePersistedProject(project)) {
+                is AppResult.Success -> persistResult.data
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isGeneratingAssets = false,
+                            errorMessage = persistResult.error.toString().substringBefore("(")
+                        )
+                    }
+                    return@launch
+                }
+            }
+            val designId = persistedProject.id
+
+            when (val saveResult = saveDesignProjectUseCase(persistedProject, currentTitle)) {
+                is AppResult.Success -> Unit
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isGeneratingAssets = false,
+                            errorMessage = saveResult.error.toString().substringBefore("(")
+                        )
+                    }
+                    return@launch
+                }
+            }
+
+            when (val result = generateDesignAssetsUseCase(persistedProject)) {
+                is AppResult.Success -> {
+                    when (
+                        val assetUpdateResult = updateDesignAssetsUseCase(
+                            designId = designId,
+                            thumbnailPath = result.data.thumbnailPath,
+                            previewPath = result.data.previewPath,
+                            exportedImagePath = result.data.exportedImagePath
+                        )
+                    ) {
+                        is AppResult.Success -> {
+                            syncMetadata(
+                                thumbnailPath = result.data.thumbnailPath,
+                                previewPath = result.data.previewPath,
+                                exportedImagePath = result.data.exportedImagePath
+                            )
+                            _uiState.update {
+                                it.copy(
+                                    isSaving = false,
+                                    isGeneratingAssets = false,
+                                    thumbnailPath = result.data.thumbnailPath,
+                                    previewPath = result.data.previewPath,
+                                    exportedImagePath = result.data.exportedImagePath,
+                                    pendingExitAfterSave = true,
+                                    saveMessage = EXPORT_SUCCESS_MESSAGE,
+                                    errorMessage = null
+                                )
+                            }
+                        }
+
+                        is AppResult.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isSaving = false,
+                                    isGeneratingAssets = false,
+                                    errorMessage = assetUpdateResult.error.toString().substringBefore("(")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isGeneratingAssets = false,
+                            errorMessage = result.error.toString().substringBefore("(")
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun consumePendingPreviewNavigation() {
         _uiState.update { it.copy(pendingPreviewDesignId = null) }
+    }
+
+    fun consumePendingExitAfterSave() {
+        _uiState.update { it.copy(pendingExitAfterSave = false) }
     }
 
     fun renameDesign(title: String) {
@@ -924,15 +1034,43 @@ class EditorViewModel @Inject constructor(
             redoStack = emptyList()
         )
         _uiState.value = updated.toUiState(historyState)
-        scheduleAutosave(updated)
+        if (_uiState.value.isPersisted) {
+            scheduleAutosave(updated)
+        }
     }
 
     private fun scheduleAutosave(project: EditorProject) {
+        if (!_uiState.value.isPersisted) return
         autosaveJob?.cancel()
         _uiState.update { it.copy(isSaving = true, saveMessage = null) }
         autosaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
             persistProject(project)
+        }
+    }
+
+    private suspend fun ensurePersistedProject(project: EditorProject): AppResult<EditorProject> {
+        if (_uiState.value.isPersisted) return AppResult.Success(project)
+
+        return when (val createResult = createDesignDraftUseCase(project, currentTitle)) {
+            is AppResult.Success -> {
+                val designId = createResult.data
+                val persistedProject = project.copy(id = designId)
+                historyState = historyState.copy(
+                    undoStack = historyState.undoStack.map { it.copy(id = designId) },
+                    current = persistedProject,
+                    redoStack = historyState.redoStack.map { it.copy(id = designId) }
+                )
+                _uiState.update { state ->
+                    state.copy(
+                        projectId = persistedProject.id,
+                        isPersisted = true
+                    )
+                }
+                AppResult.Success(persistedProject)
+            }
+
+            is AppResult.Error -> createResult
         }
     }
 
@@ -1115,6 +1253,7 @@ class EditorViewModel @Inject constructor(
             previewPath = currentPreviewPath,
             exportedImagePath = currentExportedImagePath,
             pendingPreviewDesignId = currentState.pendingPreviewDesignId,
+            pendingExitAfterSave = currentState.pendingExitAfterSave,
             isDeleted = false,
             errorMessage = currentState.errorMessage,
             saveMessage = currentState.saveMessage
@@ -1143,11 +1282,28 @@ class EditorViewModel @Inject constructor(
         )
     }
 
+    private fun BrushToolConfig.toBrushStyleSpec(): BrushStyleSpec? {
+        return when (preset) {
+            BrushPresetType.SOLID -> null
+            BrushPresetType.DASHED -> BrushStyleSpec.Dashed(colorHex)
+            BrushPresetType.OUTLINE -> BrushStyleSpec.Outline(fillColorHex = colorHex)
+            BrushPresetType.GLOW -> BrushStyleSpec.Glow(glowColorHex = colorHex)
+            BrushPresetType.PATTERN -> patternBrushName?.let { patternName ->
+                BrushStyleSpec.Pattern(
+                    drawableName = patternName,
+                    scale = brushSize / DEFAULT_BRUSH_SIZE,
+                    spacingFactor = 0.92f
+                )
+            }
+        }
+    }
+
     private companion object {
         const val AUTOSAVE_DELAY_MS = 750L
         const val SAVE_SUCCESS_MESSAGE = "Draft saved"
         const val RENAME_SUCCESS_MESSAGE = "Design renamed"
         const val EXPORT_SUCCESS_MESSAGE = "Assets updated"
         const val DELETE_SUCCESS_MESSAGE = "Design deleted"
+        const val DEFAULT_BRUSH_SIZE = 28f
     }
 }

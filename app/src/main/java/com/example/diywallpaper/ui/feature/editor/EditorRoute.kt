@@ -2,13 +2,17 @@ package com.example.diywallpaper.ui.feature.editor
 
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,6 +25,7 @@ import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextStyleSpec
+import com.example.diywallpaper.ui.components.editor.EditorExitConfirmDialog
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
 import java.io.File
 import java.util.UUID
@@ -43,6 +48,7 @@ fun EditorRoute(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -87,6 +93,12 @@ fun EditorRoute(
         viewModel.consumePendingPreviewNavigation()
     }
 
+    LaunchedEffect(uiState.pendingExitAfterSave) {
+        if (!uiState.pendingExitAfterSave) return@LaunchedEffect
+        viewModel.consumePendingExitAfterSave()
+        onBackClick()
+    }
+
     LaunchedEffect(
         pendingImportPhotoUri,
         pendingImportPhotoLeft,
@@ -112,10 +124,26 @@ fun EditorRoute(
         onImportPhotoConsumed()
     }
 
+    fun handleBackRequest() {
+        if (uiState.isPreviewMode) {
+            viewModel.exitPreviewMode()
+            return
+        }
+        if (uiState.isPersisted) {
+            onBackClick()
+        } else {
+            showExitConfirmDialog = true
+        }
+    }
+
+    BackHandler {
+        handleBackRequest()
+    }
+
     EditorScreen(
         args = args,
         uiState = uiState,
-        onBackClick = onBackClick,
+        onBackClick = ::handleBackRequest,
         onUndoClick = viewModel::undo,
         onRedoClick = viewModel::redo,
         onPreviewClick = viewModel::enterPreviewMode,
@@ -143,9 +171,10 @@ fun EditorRoute(
             )
         },
         onAddText = { text, fontFamilyId, colorHex ->
+            val safeText = text.take(EDITOR_TEXT_MAX_LENGTH)
             val fontOption = uiState.availableFonts.firstOrNull { it.id == fontFamilyId }
             viewModel.addTextLayer(
-                text = text,
+                text = safeText,
                 style = TextStyleSpec(
                     fontFamilyId = fontFamilyId,
                     fontDisplayName = fontOption?.displayName ?: fontFamilyId,
@@ -155,11 +184,12 @@ fun EditorRoute(
             )
         },
         onUpdateText = { layerId, text, fontFamilyId, colorHex ->
+            val safeText = text.take(EDITOR_TEXT_MAX_LENGTH)
             val currentLayer = uiState.layers.firstOrNull { it.id == layerId } as? com.example.diywallpaper.domain.model.design.TextLayer
             val fontOption = uiState.availableFonts.firstOrNull { it.id == fontFamilyId }
             viewModel.updateTextLayer(
                 layerId = layerId,
-                text = text,
+                text = safeText,
                 style = (currentLayer?.style ?: TextStyleSpec(
                     fontFamilyId = fontFamilyId,
                     fontDisplayName = fontOption?.displayName ?: fontFamilyId,
@@ -175,9 +205,10 @@ fun EditorRoute(
         onApplyTextPreset = viewModel::addTextPresetLayer,
         onAddSticker = viewModel::addStickerLayer,
         onAddTextBrush = { text, fontFamilyId, colorHex, brushSize ->
+            val safeText = text.take(EDITOR_TEXT_BRUSH_MAX_LENGTH)
             val fontOption = uiState.availableFonts.firstOrNull { it.id == fontFamilyId }
             viewModel.configureTextBrushTool(
-                text = text,
+                text = safeText,
                 style = TextStyleSpec(
                     fontFamilyId = fontFamilyId,
                     fontDisplayName = fontOption?.displayName ?: fontFamilyId,
@@ -189,9 +220,10 @@ fun EditorRoute(
             )
         },
         onTextBrushConfigChanged = { text, fontFamilyId, colorHex, brushSize ->
+            val safeText = text.take(EDITOR_TEXT_BRUSH_MAX_LENGTH)
             val fontOption = uiState.availableFonts.firstOrNull { it.id == fontFamilyId }
             viewModel.updateTextBrushToolConfig(
-                text = text,
+                text = safeText,
                 style = TextStyleSpec(
                     fontFamilyId = fontFamilyId,
                     fontDisplayName = fontOption?.displayName ?: fontFamilyId,
@@ -209,14 +241,34 @@ fun EditorRoute(
                 brushSize = brushSize
             )
         },
-        onBrushConfigChanged = { erase, colorHex, brushSize ->
+        onBrushConfigChanged = { erase, colorHex, brushSize, preset, patternBrushName ->
             viewModel.updateBrushToolConfig(
                 erase = erase,
                 colorHex = colorHex,
-                brushSize = brushSize
+                brushSize = brushSize,
+                preset = preset,
+                patternBrushName = patternBrushName
             )
         }
     )
+
+    if (showExitConfirmDialog) {
+        EditorExitConfirmDialog(
+            isSaving = uiState.isSaving || uiState.isGeneratingAssets,
+            onSaveClick = {
+                viewModel.saveAndExit()
+            },
+            onExitClick = {
+                showExitConfirmDialog = false
+                onBackClick()
+            },
+            onDismissRequest = {
+                if (!uiState.isSaving && !uiState.isGeneratingAssets) {
+                    showExitConfirmDialog = false
+                }
+            }
+        )
+    }
 }
 
 private fun copyImportedPhotoToInternalFiles(

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,6 +28,85 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.example.diywallpaper.ui.theme.PrimaryGradient
+import com.example.diywallpaper.ui.theme.SoftCard
+
+@Composable
+fun CommonConfirmDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    dismissText: String,
+    onConfirmClick: () -> Unit,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    confirmEnabled: Boolean = true
+) {
+    AlertDialog(
+        modifier = modifier.widthIn(max = 340.dp),
+        onDismissRequest = onDismissRequest,
+        shape = RoundedCornerShape(32.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        properties = DialogProperties(usePlatformDefaultWidth = true),
+        title = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.linearGradient(PrimaryGradient.map { it.copy(alpha = 0.16f) }),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = SoftCard.copy(alpha = 0.72f),
+                        shape = RoundedCornerShape(22.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            VitalityPrimaryButton(
+                text = confirmText,
+                onClick = onConfirmClick,
+                enabled = confirmEnabled,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        dismissButton = {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                TextButton(onClick = onDismissRequest) {
+                    Text(
+                        text = dismissText,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    )
+}
 
 @Composable
 fun VitalityPrimaryButton(

@@ -38,6 +38,7 @@
     <string name="home_wallpaper_preview">Wallpaper preview</string>
     <string name="home_diy_badge">DIY</string>
     <string name="collection_saved_for_you">Saved for you</string>
+    <string name="collection_title">Wallpaper Studio</string>
     <string name="collection_saved_subtitle">Everything you create will appear here.</string>
     <string name="collection_favorites_count">%1$d Favorites</string>
     <string name="collection_designs_count">%1$d Designs</string>
@@ -45,6 +46,11 @@
     <string name="collection_designs_empty">No designs available yet.</string>
     <string name="collection_design_preview">Design preview</string>
     <string name="collection_design_default_title">Untitled design</string>
+    <string name="collection_delete_design">Delete design</string>
+    <string name="collection_delete_design_title">Delete this design?</string>
+    <string name="collection_delete_design_message">This design will be removed from your collection.</string>
+    <string name="collection_delete_design_confirm">Delete</string>
+    <string name="collection_delete_design_cancel">Cancel</string>
     <string name="preview_title">Preview</string>
     <string name="preview_back">Back</string>
     <string name="preview_open_device">Open device preview</string>
@@ -114,6 +120,11 @@
     <string name="editor_layers_backward">Backward</string>
     <string name="editor_layers_front">To front</string>
     <string name="editor_layers_back">To back</string>
+    <string name="editor_exit_dialog_title">Save your design?</string>
+    <string name="editor_exit_dialog_message">If you exit now, this new design will not appear in your collection.</string>
+    <string name="editor_exit_dialog_save">Save</string>
+    <string name="editor_exit_dialog_saving">Saving...</string>
+    <string name="editor_exit_dialog_exit">Exit</string>
     <string name="crop_title">Crop</string>
     <string name="crop_next">Next</string>
     <string name="crop_ratio_title">Ratio</string>

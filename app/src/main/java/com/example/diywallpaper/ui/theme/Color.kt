@@ -38,6 +38,11 @@ val Border = Color(0xFFF0E7F5)
 val Divider = Color(0xFFF4ECF7)
 
 val PurPleLight = Color(0xFFE8DDFF)
+
+// Editor brush panel
+val BrushPanelControl = Color(0xFFF0E7F5)
+val BrushAccentPink = Color(0xFFFD56A7)
+val BrushSelectedSoft = Color(0xFFFFF1F7)
 // Gradients
 val PrimaryGradient = listOf(
     Color(0xFFFF7AB6),

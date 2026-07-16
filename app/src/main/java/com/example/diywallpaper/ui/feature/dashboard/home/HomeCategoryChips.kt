@@ -1,5 +1,6 @@
 package com.example.diywallpaper.ui.feature.dashboard.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.diywallpaper.domain.model.HomeFeedCategory
+import com.example.diywallpaper.ui.theme.PinkStrong
 
 private const val ALL_CATEGORY_ID = "all"
 private const val ALL_CATEGORY_TITLE = "All"
@@ -72,32 +74,29 @@ private fun HomeCategoryChip(
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(999.dp),
-        color = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        color =
+            MaterialTheme.colorScheme.surface,
         tonalElevation = if (isSelected) 4.dp else 0.dp,
-        shadowElevation = if (isSelected) 2.dp else 0.dp
+        shadowElevation = if (isSelected) 2.dp else 0.dp,
+        border =if(isSelected) BorderStroke(1.dp,PinkStrong)
+        else null
+
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CategoryIcon(
-                iconUrl = iconUrl,
-                isDiy = isDiy,
-                isSelected = isSelected
-            )
+                CategoryIcon(
+                    iconUrl = iconUrl,
+                    isDiy = isDiy,
+                    isSelected = isSelected
+                )
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
+                color =
                     MaterialTheme.colorScheme.onSurface
-                }
             )
         }
     }

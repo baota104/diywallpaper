@@ -1,6 +1,7 @@
 package com.example.diywallpaper.ui.feature.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +9,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Layers
@@ -26,6 +31,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -76,7 +85,7 @@ fun EditorScreen(
     onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
-    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float, preset: BrushPresetType, patternBrushName: String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selectedTextLayer = uiState.layers
@@ -91,6 +100,9 @@ fun EditorScreen(
             it == EditorTool.BRUSH_ERASE ||
             it == EditorTool.TEXT_BRUSH
     }
+    val density = LocalDensity.current
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    val inlinePanelHeight = if (inlineToolSheet != null && !isImeVisible) 308.dp else 0.dp
 
     if (uiState.isPreviewMode && previewProject != null) {
         Box(
@@ -124,11 +136,13 @@ fun EditorScreen(
     }
 
     Scaffold(
-        modifier = modifier.statusBarsPadding().navigationBarsPadding(),
+        modifier = modifier.statusBarsPadding(),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             EditorTopBar(
+                canUndo = uiState.canUndo,
+                canRedo = uiState.canRedo,
                 onBackClick = onBackClick,
                 onUndoClick = onUndoClick,
                 onRedoClick = onRedoClick,
@@ -137,16 +151,18 @@ fun EditorScreen(
             )
         },
         bottomBar = {
-            EditorBottomToolbar(
-                selectedTool = uiState.activeTool,
-                onToolSelected = { tool ->
-                    if (tool == EditorTool.IMPORT_PHOTO) {
-                        onImportPhoto()
-                    } else {
-                        onToolSelected(tool)
+            if (inlineToolSheet == null) {
+                EditorBottomToolbar(
+                    selectedTool = uiState.activeTool,
+                    onToolSelected = { tool ->
+                        if (tool == EditorTool.IMPORT_PHOTO) {
+                            onImportPhoto()
+                        } else {
+                            onToolSelected(tool)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -161,7 +177,7 @@ fun EditorScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(bottom = if (inlineToolSheet != null) 236.dp else 0.dp),
+                    .padding(bottom = inlinePanelHeight),
                 contentAlignment = Alignment.Center
             ) {
                 EditorCanvas(
@@ -173,18 +189,23 @@ fun EditorScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                FloatingActionButton(
-                    onClick = onOpenLayers,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Layers,
-                        contentDescription = stringResource(id = R.string.editor_tool_layers)
-                    )
+                if (inlineToolSheet == null) {
+                    FloatingActionButton(
+                        onClick = onOpenLayers,
+                        shape = CircleShape,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(16.dp)
+                            .size(56.dp)
+
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Layers,
+                            contentDescription = stringResource(id = R.string.editor_tool_layers)
+                        )
+                    }
                 }
 
             }
@@ -194,7 +215,14 @@ fun EditorScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
+                    .padding(paddingValues)
+                    .then(
+                        if (isImeVisible) {
+                            Modifier.imePadding()
+                        } else {
+                            Modifier.navigationBarsPadding()
+                        }
+                    ),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 InlineEditorToolPanel(
@@ -309,7 +337,7 @@ private fun EditorScreenPreview() {
             onAddTextBrush = { _, _, _, _ -> },
             onTextBrushConfigChanged = { _, _, _, _ -> },
             onApplyBrush = { _, _, _ -> },
-            onBrushConfigChanged = { _, _, _ -> }
+            onBrushConfigChanged = { _, _, _, _, _ -> }
         )
     }
 }
@@ -348,7 +376,7 @@ private fun InlineEditorToolPanel(
     onAddTextBrush: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onTextBrushConfigChanged: (text: String, fontFamilyId: String, colorHex: String, brushSize: Float) -> Unit,
     onApplyBrush: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
-    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float) -> Unit,
+    onBrushConfigChanged: (erase: Boolean, colorHex: String, brushSize: Float, preset: BrushPresetType, patternBrushName: String?) -> Unit,
     onSelectLayer: (String?) -> Unit,
     onMoveLayer: (layerId: String, targetIndex: Int) -> Unit,
     onRemoveSelectedLayer: () -> Unit,
@@ -357,9 +385,9 @@ private fun InlineEditorToolPanel(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 260.dp),
+            .heightIn(max = 308.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 12.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {

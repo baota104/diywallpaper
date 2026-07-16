@@ -1,6 +1,9 @@
 package com.example.diywallpaper.ui.feature.preview.device
 
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
+import android.graphics.Matrix
+import android.graphics.PathMeasure
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,8 +27,10 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
@@ -43,9 +48,16 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
 import coil.compose.AsyncImage
 import com.example.diywallpaper.R
+import com.example.diywallpaper.core.render.AndroidTextLayerRenderSpec
+import com.example.diywallpaper.core.render.androidDrawLayerRenderBounds
+import com.example.diywallpaper.core.render.androidTextLayerRenderSpec
+import com.example.diywallpaper.core.render.androidTextRenderSpec
+import com.example.diywallpaper.core.render.androidTextTrailStampPoints
+import com.example.diywallpaper.core.render.buildAndroidTextPaint
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
+import com.example.diywallpaper.domain.model.design.DesignRawBounds
 import com.example.diywallpaper.domain.model.design.DesignViewportScaleMode
 import com.example.diywallpaper.domain.model.design.DesignViewportTransform
 import com.example.diywallpaper.domain.model.design.DrawLayer
@@ -62,7 +74,6 @@ import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
-import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.ui.feature.editor.editorFontFamily
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
 import kotlin.math.roundToInt
@@ -274,23 +285,45 @@ private fun SavedTextLayer(
     layer: TextLayer,
     viewport: DesignViewportTransform
 ) {
-    val size = textRenderSize()
+    val context = LocalContext.current
+    val spec = remember(context, layer.text, layer.style) {
+        androidTextLayerRenderSpec(
+            context = context,
+            layer = layer,
+            fontResId = editorFontResId(layer.style.fontFamilyId)
+        )
+    }
+    val bounds = spec.bounds
+    val textColor = resolvePreviewTextColor(layer.style.textBrush, layer.style.textColorHex).toArgb()
+    val paint = remember(context, layer.style, layer.transform.alpha, viewport.scale, textColor) {
+        buildAndroidTextPaint(
+            context = context,
+            style = layer.style,
+            fontResId = editorFontResId(layer.style.fontFamilyId),
+            color = textColor,
+            alpha = layer.transform.alpha,
+            textScale = viewport.scale
+        )
+    }
     SavedLayerBox(
-        transform = layer.transform,
-        width = size.width,
-        height = size.height,
+        transform = layer.transform.copy(
+            offsetX = layer.transform.offsetX + bounds.minX,
+            offsetY = layer.transform.offsetY + bounds.minY
+        ),
+        width = bounds.width,
+        height = bounds.height,
         viewport = viewport
     ) {
-        Text(
-            text = layer.text,
-            style = TextStyle(
-                color = resolvePreviewTextColor(layer.style.textBrush, layer.style.textColorHex),
-                fontFamily = editorFontFamily(layer.style.fontFamilyId),
-                fontSize = (layer.style.fontSizeSp * viewport.scale).sp,
-                fontWeight = FontWeight.SemiBold
-            ),
-            maxLines = 1
-        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.drawText(
+                    layer.text,
+                    (spec.drawX - bounds.minX) * viewport.scale,
+                    (spec.drawBaselineY - bounds.minY) * viewport.scale,
+                    paint
+                )
+            }
+        }
     }
 }
 
@@ -301,38 +334,35 @@ private fun SavedBrushStrokeStack(
     modifier: Modifier = Modifier
 ) {
     if (layers.isEmpty()) return
+    val context = LocalContext.current
+    val patternBrushBitmaps = rememberPatternBrushBitmaps()
     Box(modifier = modifier) {
         layers.forEach { layer ->
-            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            val bounds = remember(context, layer.drawData) {
+                androidDrawLayerRenderBounds(
+                    context = context,
+                    drawData = layer.drawData,
+                    fontResIdFor = ::editorFontResId
+                )
+            } ?: layer.drawData.renderBounds() ?: return@forEach
             Canvas(
                 modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = viewport.modelXToTarget(layer.transform.offsetX + bounds.minX).roundToInt(),
-                            y = viewport.modelYToTarget(layer.transform.offsetY + bounds.minY).roundToInt()
-                        )
-                    }
-                    .size(
-                        width = with(LocalDensity.current) { (bounds.width * viewport.scale).toDp() },
-                        height = with(LocalDensity.current) { (bounds.height * viewport.scale).toDp() }
-                    )
-                    .graphicsLayer(
-                        rotationZ = layer.transform.rotation,
-                        scaleX = layer.transform.scale,
-                        scaleY = layer.transform.scale,
-                        alpha = layer.transform.alpha
-                    )
+                    .fillMaxSize()
+                    .graphicsLayer(alpha = layer.transform.alpha)
                     .graphicsLayer {
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
             ) {
-                withTransform({
-                    translate(left = -bounds.minX * viewport.scale, top = -bounds.minY * viewport.scale)
-                }) {
+                withSavedDrawExporterTransform(
+                    bounds = bounds,
+                    transform = layer.transform,
+                    viewport = viewport
+                ) {
                     layer.drawData.forEachBrushStackItem { item ->
                         drawSavedBrushStackStroke(
                             item = item,
-                            scale = viewport.scale
+                            scale = viewport.scale,
+                            patternBrushBitmaps = patternBrushBitmaps
                         )
                     }
                 }
@@ -343,18 +373,61 @@ private fun SavedBrushStrokeStack(
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedBrushStackStroke(
     item: BrushStackItem,
-    scale: Float
+    scale: Float,
+    patternBrushBitmaps: Map<String, android.graphics.Bitmap?>
 ) {
     val stroke = when (item) {
         is BrushStackItem.Draw -> item.stroke
         is BrushStackItem.Erase -> item.stroke
     }
     if (stroke.points.size < 2) return
+    val patternStyle = (item as? BrushStackItem.Draw)?.stroke?.brushStyle as? BrushStyleSpec.Pattern
+    val patternBitmap = patternStyle?.let { patternBrushBitmaps[it.drawableName] }
+    if (patternStyle != null && patternBitmap != null && !patternBitmap.isRecycled) {
+        drawSavedPatternBrushStroke(
+            stroke = stroke,
+            bitmap = patternBitmap,
+            patternStyle = patternStyle,
+            scale = scale
+        )
+        return
+    }
+    val style = stroke.brushStyle
     val path = androidx.compose.ui.graphics.Path().apply {
         moveTo(stroke.points.first().x * scale, stroke.points.first().y * scale)
         stroke.points.drop(1).forEach { point ->
             lineTo(point.x * scale, point.y * scale)
         }
+    }
+    if (style is BrushStyleSpec.Outline && item is BrushStackItem.Draw) {
+        drawPath(
+            path = path,
+            color = parsePreviewColor(style.strokeColorHex),
+            style = Stroke(
+                width = stroke.strokeWidth * scale * 1.55f,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+        drawPath(
+            path = path,
+            color = parsePreviewColor(style.fillColorHex),
+            style = Stroke(
+                width = stroke.strokeWidth * scale,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+        return
+    }
+    if (style is BrushStyleSpec.Glow && item is BrushStackItem.Draw) {
+        drawSavedGlowBrushStroke(
+            stroke = stroke,
+            scale = scale,
+            color = parsePreviewColor(style.colorHex),
+            glowColor = parsePreviewColor(style.glowColorHex)
+        )
+        return
     }
     val brush = when (val style = stroke.brushStyle) {
         is BrushStyleSpec.Gradient -> Brush.linearGradient(
@@ -365,6 +438,19 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedBrushStack
             listOf(parsePreviewColor(style.colorHex), parsePreviewColor(style.colorHex))
         )
 
+        is BrushStyleSpec.Dashed -> Brush.linearGradient(
+            listOf(parsePreviewColor(style.colorHex), parsePreviewColor(style.colorHex))
+        )
+
+        is BrushStyleSpec.Outline -> Brush.linearGradient(
+            listOf(parsePreviewColor(style.fillColorHex), parsePreviewColor(style.fillColorHex))
+        )
+
+        is BrushStyleSpec.Glow -> Brush.linearGradient(
+            listOf(parsePreviewColor(style.colorHex), parsePreviewColor(style.colorHex))
+        )
+
+        is BrushStyleSpec.Pattern,
         null -> {
             val color = parsePreviewColor(stroke.colorHex ?: "#1D1726")
             Brush.linearGradient(listOf(color, color))
@@ -376,10 +462,127 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedBrushStack
         style = Stroke(
             width = stroke.strokeWidth * scale,
             cap = androidx.compose.ui.graphics.StrokeCap.Round,
-            join = androidx.compose.ui.graphics.StrokeJoin.Round
+            join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            pathEffect = (style as? BrushStyleSpec.Dashed)?.let {
+                val width = stroke.strokeWidth * scale
+                PathEffect.dashPathEffect(floatArrayOf(width * 1.7f, width * 1.25f), 0f)
+            }
         ),
         blendMode = if (item is BrushStackItem.Erase) BlendMode.Clear else BlendMode.SrcOver
     )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.withSavedDrawExporterTransform(
+    bounds: DesignRawBounds,
+    transform: LayerTransform,
+    viewport: DesignViewportTransform,
+    block: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit
+) {
+    val pivot = Offset(
+        x = viewport.modelXToTarget(transform.offsetX + bounds.minX + bounds.width / 2f),
+        y = viewport.modelYToTarget(transform.offsetY + bounds.minY + bounds.height / 2f)
+    )
+    withTransform({
+        rotate(degrees = transform.rotation, pivot = pivot)
+        scale(scaleX = transform.scale, scaleY = transform.scale, pivot = pivot)
+        translate(
+            left = viewport.offsetX + transform.offsetX * viewport.scale,
+            top = viewport.offsetY + transform.offsetY * viewport.scale
+        )
+    }) {
+        block()
+    }
+}
+
+@Composable
+private fun rememberPatternBrushBitmaps(): Map<String, android.graphics.Bitmap?> {
+    val context = LocalContext.current
+    return remember(context) {
+        (1..20).associate { index ->
+            val name = "brush$index"
+            val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
+            name to resId.takeIf { it != 0 }?.let {
+                BitmapFactory.decodeResource(context.resources, it)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedPatternBrushStroke(
+    stroke: BrushStroke,
+    bitmap: android.graphics.Bitmap,
+    patternStyle: BrushStyleSpec.Pattern,
+    scale: Float
+) {
+    val path = android.graphics.Path().apply {
+        moveTo(stroke.points.first().x * scale, stroke.points.first().y * scale)
+        stroke.points.drop(1).forEach { point ->
+            lineTo(point.x * scale, point.y * scale)
+        }
+    }
+    val measure = PathMeasure(path, false)
+    val length = measure.length
+    if (length <= 0f) return
+    val iconScale = (stroke.strokeWidth / bitmap.width.coerceAtLeast(1)) *
+        patternStyle.scale.coerceAtLeast(0.1f) *
+        scale
+    val step = (bitmap.width * iconScale * patternStyle.spacingFactor.coerceAtLeast(0.35f))
+        .coerceAtLeast(4f)
+    val position = FloatArray(2)
+    val tangent = FloatArray(2)
+    val matrix = Matrix()
+    var distance = step / 2f
+    drawIntoCanvas { composeCanvas ->
+        val nativeCanvas = composeCanvas.nativeCanvas
+        while (distance < length && measure.getPosTan(distance, position, tangent)) {
+            matrix.reset()
+            matrix.setScale(iconScale, iconScale)
+            matrix.postTranslate(
+                -bitmap.width * iconScale / 2f,
+                -bitmap.height * iconScale / 2f
+            )
+            if (patternStyle.followPath) {
+                val angle = Math.toDegrees(kotlin.math.atan2(tangent[1], tangent[0]).toDouble()).toFloat()
+                matrix.postRotate(angle)
+            }
+            matrix.postTranslate(position[0], position[1])
+            nativeCanvas.drawBitmap(bitmap, matrix, null)
+            distance += step
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedGlowBrushStroke(
+    stroke: BrushStroke,
+    scale: Float,
+    color: Color,
+    glowColor: Color
+) {
+    val nativePath = android.graphics.Path().apply {
+        moveTo(stroke.points.first().x * scale, stroke.points.first().y * scale)
+        stroke.points.drop(1).forEach { point ->
+            lineTo(point.x * scale, point.y * scale)
+        }
+    }
+    val width = stroke.strokeWidth * scale
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = glowColor.copy(alpha = 0.45f).toArgb()
+        style = android.graphics.Paint.Style.STROKE
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        strokeWidth = width * 1.9f
+        maskFilter = BlurMaskFilter(width * 0.9f, BlurMaskFilter.Blur.NORMAL)
+    }
+    nativeCanvas.drawPath(nativePath, glowPaint)
+    val corePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color.toArgb()
+        style = android.graphics.Paint.Style.STROKE
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        strokeWidth = width
+    }
+    nativeCanvas.drawPath(nativePath, corePaint)
 }
 
 @Composable
@@ -389,66 +592,96 @@ private fun SavedDrawLayer(
     eraseColor: Color
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val bounds = layer.drawData.renderBounds() ?: return
+    val patternBrushBitmaps = rememberPatternBrushBitmaps()
+    val bounds = remember(context, layer.drawData) {
+        androidDrawLayerRenderBounds(
+            context = context,
+            drawData = layer.drawData,
+            fontResIdFor = ::editorFontResId
+        )
+    } ?: layer.drawData.renderBounds() ?: return
     val textTrailTypeface = remember(layer.drawData) {
         val textTrail = layer.drawData as? DrawLayerData.TextTrail
         textTrail?.let {
             ResourcesCompat.getFont(context, editorFontResId(it.textStyle.fontFamilyId))
         }
     }
-    Box(
+    val textTrailSpec = remember(context, layer.drawData) {
+        val textTrail = layer.drawData as? DrawLayerData.TextTrail
+        textTrail?.let {
+            androidTextRenderSpec(
+                context = context,
+                text = it.text,
+                style = it.textStyle,
+                fontResId = editorFontResId(it.textStyle.fontFamilyId)
+            )
+        }
+    }
+    Canvas(
         modifier = Modifier
-            .offset {
-                IntOffset(
-                    x = viewport.modelXToTarget(layer.transform.offsetX + bounds.minX).roundToInt(),
-                    y = viewport.modelYToTarget(layer.transform.offsetY + bounds.minY).roundToInt()
-                )
-            }
-            .size(
-                width = with(density) { (bounds.width * viewport.scale).toDp() },
-                height = with(density) { (bounds.height * viewport.scale).toDp() }
-            )
-            .graphicsLayer(
-                rotationZ = layer.transform.rotation,
-                scaleX = layer.transform.scale,
-                scaleY = layer.transform.scale,
-                alpha = layer.transform.alpha
-            )
+            .fillMaxSize()
+            .graphicsLayer(alpha = layer.transform.alpha)
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        withSavedDrawExporterTransform(
+            bounds = bounds,
+            transform = layer.transform,
+            viewport = viewport
+        ) {
             when (val data = layer.drawData) {
                 is DrawLayerData.FreeStroke -> drawPreviewStrokeLocal(
                     stroke = data.stroke,
-                    originX = bounds.minX,
-                    originY = bounds.minY,
+                    originX = 0f,
+                    originY = 0f,
                     scale = viewport.scale,
-                    color = parsePreviewColor(data.stroke.colorHex ?: "#1D1726")
+                    color = parsePreviewColor(data.stroke.colorHex ?: "#1D1726"),
+                    patternBrushBitmaps = patternBrushBitmaps
                 )
 
                 is DrawLayerData.EraseStroke -> drawPreviewStrokeLocal(
                     stroke = data.stroke,
-                    originX = bounds.minX,
-                    originY = bounds.minY,
+                    originX = 0f,
+                    originY = 0f,
                     scale = viewport.scale,
-                    color = eraseColor
+                    color = eraseColor,
+                    patternBrushBitmaps = patternBrushBitmaps
                 )
 
                 is DrawLayerData.BrushStack -> Unit
 
                 is DrawLayerData.TextTrail -> drawPreviewTextTrail(
                     data = data,
-                    originX = bounds.minX,
-                    originY = bounds.minY,
+                    originX = 0f,
+                    originY = 0f,
                     scale = viewport.scale,
-                    typeface = textTrailTypeface
+                    typeface = textTrailTypeface,
+                    textSpec = textTrailSpec
                 )
 
                 is DrawLayerData.StickerTrail -> Unit
             }
         }
-        val stickerTrail = layer.drawData as? DrawLayerData.StickerTrail
-        if (stickerTrail != null) {
+    }
+    val stickerTrail = layer.drawData as? DrawLayerData.StickerTrail
+    if (stickerTrail != null) {
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = viewport.modelXToTarget(layer.transform.offsetX + bounds.minX).roundToInt(),
+                        y = viewport.modelYToTarget(layer.transform.offsetY + bounds.minY).roundToInt()
+                    )
+                }
+                .size(
+                    width = with(LocalDensity.current) { (bounds.width * viewport.scale).toDp() },
+                    height = with(LocalDensity.current) { (bounds.height * viewport.scale).toDp() }
+                )
+                .graphicsLayer(
+                    rotationZ = layer.transform.rotation,
+                    scaleX = layer.transform.scale,
+                    scaleY = layer.transform.scale,
+                    alpha = layer.transform.alpha
+                )
+        ) {
             DrawPreviewStickerTrail(
                 data = stickerTrail,
                 originX = bounds.minX,
@@ -531,9 +764,23 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewStrokeLo
     originX: Float,
     originY: Float,
     scale: Float,
-    color: Color
+    color: Color,
+    patternBrushBitmaps: Map<String, android.graphics.Bitmap?>
 ) {
     if (stroke.points.size < 2) return
+    val patternStyle = stroke.brushStyle as? BrushStyleSpec.Pattern
+    val patternBitmap = patternStyle?.let { patternBrushBitmaps[it.drawableName] }
+    if (patternStyle != null && patternBitmap != null && !patternBitmap.isRecycled) {
+        drawSavedPatternBrushStrokeLocal(
+            stroke = stroke,
+            bitmap = patternBitmap,
+            patternStyle = patternStyle,
+            originX = originX,
+            originY = originY,
+            scale = scale
+        )
+        return
+    }
     drawContext.canvas.nativeCanvas.apply {
         val path = android.graphics.Path()
         stroke.points.forEachIndexed { index, point ->
@@ -545,14 +792,113 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewStrokeLo
                 path.lineTo(x, y)
             }
         }
+        when (val style = stroke.brushStyle) {
+            is BrushStyleSpec.Outline -> {
+                val outlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = parsePreviewColor(style.strokeColorHex).toArgb()
+                    this.style = android.graphics.Paint.Style.STROKE
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                    strokeWidth = stroke.strokeWidth * scale * 1.55f
+                }
+                drawPath(path, outlinePaint)
+                val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = parsePreviewColor(style.fillColorHex).toArgb()
+                    this.style = android.graphics.Paint.Style.STROKE
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                    strokeWidth = stroke.strokeWidth * scale
+                }
+                drawPath(path, fillPaint)
+                return
+            }
+
+            is BrushStyleSpec.Glow -> {
+                val width = stroke.strokeWidth * scale
+                val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = parsePreviewColor(style.glowColorHex).copy(alpha = 0.45f).toArgb()
+                    this.style = android.graphics.Paint.Style.STROKE
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                    strokeWidth = width * 1.9f
+                    maskFilter = BlurMaskFilter(width * 0.9f, BlurMaskFilter.Blur.NORMAL)
+                }
+                drawPath(path, glowPaint)
+                val corePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = parsePreviewColor(style.colorHex).toArgb()
+                    this.style = android.graphics.Paint.Style.STROKE
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                    strokeWidth = width
+                }
+                drawPath(path, corePaint)
+                return
+            }
+
+            else -> Unit
+        }
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color.toArgb()
+            this.color = when (val style = stroke.brushStyle) {
+                is BrushStyleSpec.Dashed -> parsePreviewColor(style.colorHex).toArgb()
+                is BrushStyleSpec.Solid -> parsePreviewColor(style.colorHex).toArgb()
+                else -> color.toArgb()
+            }
             style = android.graphics.Paint.Style.STROKE
             strokeCap = android.graphics.Paint.Cap.ROUND
             strokeJoin = android.graphics.Paint.Join.ROUND
             strokeWidth = stroke.strokeWidth * scale
+            if (stroke.brushStyle is BrushStyleSpec.Dashed) {
+                pathEffect = android.graphics.DashPathEffect(
+                    floatArrayOf(strokeWidth * 1.7f, strokeWidth * 1.25f),
+                    0f
+                )
+            }
         }
         drawPath(path, paint)
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSavedPatternBrushStrokeLocal(
+    stroke: BrushStroke,
+    bitmap: android.graphics.Bitmap,
+    patternStyle: BrushStyleSpec.Pattern,
+    originX: Float,
+    originY: Float,
+    scale: Float
+) {
+    val path = android.graphics.Path().apply {
+        moveTo((stroke.points.first().x - originX) * scale, (stroke.points.first().y - originY) * scale)
+        stroke.points.drop(1).forEach { point ->
+            lineTo((point.x - originX) * scale, (point.y - originY) * scale)
+        }
+    }
+    val measure = PathMeasure(path, false)
+    val length = measure.length
+    if (length <= 0f) return
+    val iconScale = (stroke.strokeWidth / bitmap.width.coerceAtLeast(1)) *
+        patternStyle.scale.coerceAtLeast(0.1f) *
+        scale
+    val step = (bitmap.width * iconScale * patternStyle.spacingFactor.coerceAtLeast(0.35f))
+        .coerceAtLeast(4f)
+    val position = FloatArray(2)
+    val tangent = FloatArray(2)
+    val matrix = Matrix()
+    var distance = step / 2f
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    while (distance < length && measure.getPosTan(distance, position, tangent)) {
+        matrix.reset()
+        matrix.setScale(iconScale, iconScale)
+        matrix.postTranslate(
+            -bitmap.width * iconScale / 2f,
+            -bitmap.height * iconScale / 2f
+        )
+        if (patternStyle.followPath) {
+            val angle = Math.toDegrees(kotlin.math.atan2(tangent[1], tangent[0]).toDouble()).toFloat()
+            matrix.postRotate(angle)
+        }
+        matrix.postTranslate(position[0], position[1])
+        nativeCanvas.drawBitmap(bitmap, matrix, null)
+        distance += step
     }
 }
 
@@ -561,7 +907,8 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewTextTrai
     originX: Float,
     originY: Float,
     scale: Float,
-    typeface: Typeface?
+    typeface: Typeface?,
+    textSpec: AndroidTextLayerRenderSpec?
 ) {
     if (data.points.isEmpty() || data.text.isBlank()) return
     val nativeCanvas = drawContext.canvas.nativeCanvas
@@ -571,15 +918,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPreviewTextTrai
         isFakeBoldText = true
         this.typeface = typeface
     }
-    data.points.forEachIndexed { index, point ->
-        if (index % 2 == 0) {
-            nativeCanvas.drawText(
-                data.text,
-                (point.x - originX) * scale,
-                (point.y - originY) * scale,
-                paint
-            )
-        }
+    androidTextTrailStampPoints(data).forEach { point ->
+        nativeCanvas.drawText(
+            data.text,
+            (point.x + (textSpec?.drawX ?: 0f) - originX) * scale,
+            (point.y + (textSpec?.drawBaselineY ?: 0f) - originY) * scale,
+            paint
+        )
     }
 }
 

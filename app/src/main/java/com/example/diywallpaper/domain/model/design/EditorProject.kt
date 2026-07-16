@@ -264,6 +264,29 @@ sealed interface BrushStyleSpec {
 
     @Serializable
     data class Gradient(val colors: List<String>) : BrushStyleSpec
+
+    @Serializable
+    data class Dashed(val colorHex: String) : BrushStyleSpec
+
+    @Serializable
+    data class Outline(
+        val fillColorHex: String,
+        val strokeColorHex: String = "#111111"
+    ) : BrushStyleSpec
+
+    @Serializable
+    data class Glow(
+        val colorHex: String = "#FFFFFF",
+        val glowColorHex: String
+    ) : BrushStyleSpec
+
+    @Serializable
+    data class Pattern(
+        val drawableName: String,
+        val scale: Float,
+        val spacingFactor: Float = 1f,
+        val followPath: Boolean = true
+    ) : BrushStyleSpec
 }
 
 @Serializable

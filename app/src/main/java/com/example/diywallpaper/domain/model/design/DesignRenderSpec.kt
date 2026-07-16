@@ -113,12 +113,12 @@ fun photoRenderSize(ratio: CropPresetRatio?): DesignRenderSize {
 
 fun DrawLayerData.renderBounds(): DesignRawBounds? {
     return when (this) {
-        is DrawLayerData.FreeStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
-        is DrawLayerData.EraseStroke -> stroke.points.strokeBounds(stroke.strokeWidth * 2.8f)
+        is DrawLayerData.FreeStroke -> stroke.points.strokeBounds(stroke.renderPadding())
+        is DrawLayerData.EraseStroke -> stroke.points.strokeBounds(stroke.renderPadding())
         is DrawLayerData.BrushStack -> items
             .mapNotNull { item ->
                 when (item) {
-                    is BrushStackItem.Draw -> item.stroke.points.strokeBounds(item.stroke.strokeWidth * 2.8f)
+                    is BrushStackItem.Draw -> item.stroke.points.strokeBounds(item.stroke.renderPadding())
                     is BrushStackItem.Erase -> null
                 }
             }
@@ -196,11 +196,21 @@ private data class TextFrameMetrics(
 private fun textFrameMetrics(fontFamilyId: String): TextFrameMetrics {
     val id = fontFamilyId.lowercase()
     return when {
-        "script" in id || "dancing" in id || "pacifico" in id || "play" in id -> TextFrameMetrics(
+        "script" in id ||
+            "allura" in id ||
+            "arizonia" in id ||
+            "licorice" in id ||
+            "lieckerli" in id ||
+            "meow" in id ||
+            "dawning" in id ||
+            "sansita" in id ||
+            "dancing" in id ||
+            "pacifico" in id ||
+            "play" in id -> TextFrameMetrics(
             widthFactor = 0.9f,
-            heightFactor = 1.9f,
-            horizontalPaddingFactor = 1.85f,
-            verticalPaddingFactor = 1.45f
+            heightFactor = 2.05f,
+            horizontalPaddingFactor = 2.25f,
+            verticalPaddingFactor = 1.75f
         )
 
         "bold" in id || "round" in id -> TextFrameMetrics(
@@ -227,6 +237,17 @@ private fun List<StrokePoint>.strokeBounds(padding: Float): DesignRawBounds? {
         maxX = maxOf { it.x } + padding,
         maxY = maxOf { it.y } + padding
     )
+}
+
+private fun BrushStroke.renderPadding(): Float {
+    val multiplier = when (brushStyle) {
+        is BrushStyleSpec.Pattern -> 4.4f
+        is BrushStyleSpec.Glow -> 4.2f
+        is BrushStyleSpec.Outline -> 3.3f
+        is BrushStyleSpec.Dashed -> 2.8f
+        else -> 2.8f
+    }
+    return strokeWidth * multiplier
 }
 
 private fun estimateRenderTextWidth(text: String, fontSize: Float): Float {

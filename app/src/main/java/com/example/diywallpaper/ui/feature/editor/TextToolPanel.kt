@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,15 +19,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -59,11 +55,16 @@ import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
+import com.example.diywallpaper.ui.components.editor.EditorColorPickerPanel
+import com.example.diywallpaper.ui.components.editor.EditorColorRow
+import com.example.diywallpaper.ui.components.editor.EditorColorToken
+import com.example.diywallpaper.ui.components.editor.EditorFontSampleRow
 import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
 import com.example.diywallpaper.ui.theme.Primary
-import com.example.diywallpaper.ui.theme.PrimarySoft
 import com.example.diywallpaper.ui.theme.Surface
 import kotlin.math.roundToInt
+
+const val EDITOR_TEXT_MAX_LENGTH = 60
 
 @Composable
 fun TextToolPanel(
@@ -124,7 +125,7 @@ fun TextToolPanel(
             selectedPresetId = selectedPresetId,
             onPresetSelected = { preset ->
                 selectedPresetId = preset.id
-                textValue = preset.previewText
+                textValue = preset.previewText.take(EDITOR_TEXT_MAX_LENGTH)
                 selectedFontId = visibleFonts.firstOrNull { it.id == preset.style.fontFamilyId }?.id
                     ?: selectedFontId
                 selectedColorHex = preset.style.textColorHex
@@ -140,17 +141,17 @@ fun TextToolPanel(
             selectedFontId = selectedFontId,
             selectedColorHex = selectedColorHex,
             visibleFonts = visibleFonts,
-            onTextChanged = { textValue = it },
+            onTextChanged = { textValue = it.take(EDITOR_TEXT_MAX_LENGTH) },
             onFontSelected = { selectedFontId = it },
             onColorSelected = { selectedColorHex = it },
             onOpenColorPicker = { showColorPicker = true },
             onOpenTextLibrary = { showTextLibrary = true },
             onDone = {
                 if (editTargetLayer != null) {
-                    onUpdateText(editTargetLayer.id, textValue, selectedFontId, selectedColorHex)
+                    onUpdateText(editTargetLayer.id, textValue.take(EDITOR_TEXT_MAX_LENGTH), selectedFontId, selectedColorHex)
                     onDismiss()
                 } else {
-                    onAddText(textValue, selectedFontId, selectedColorHex)
+                    onAddText(textValue.take(EDITOR_TEXT_MAX_LENGTH), selectedFontId, selectedColorHex)
                     resetForNextText()
                     onDismiss()
                 }
@@ -195,7 +196,7 @@ private fun TextMainPanel(
             modifier = Modifier.fillMaxWidth()
         )
 
-        FontSampleRow(
+        EditorFontSampleRow(
             fonts = visibleFonts,
             selectedFontId = selectedFontId,
             onFontSelected = onFontSelected
@@ -293,112 +294,17 @@ private fun TextInputWithLibrary(
 }
 
 @Composable
-private fun FontSampleRow(
-    fonts: List<EditorFontOption>,
-    selectedFontId: String,
-    onFontSelected: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        fonts.forEach { font ->
-            val selected = font.id == selectedFontId
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onFontSelected(font.id) }
-            ) {
-                Text(
-                    text = "Aa",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontFamily = editorFontFamily(font.id),
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Box(
-                    modifier = Modifier
-                        .size(if (selected) 4.dp else 0.dp)
-                        .background(MaterialTheme.colorScheme.onSurface, CircleShape)
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun TextColorRow(
     selectedColorHex: String,
     onOpenColorPicker: () -> Unit,
     onColorSelected: (String) -> Unit
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.horizontalScroll(rememberScrollState())
-    ) {
-        CustomColorSwatch(onClick = onOpenColorPicker)
-        textColorTokens.forEach { token ->
-            EditorColorSwatch(
-                color = token.swatch,
-                selected = token.hex.equals(selectedColorHex, ignoreCase = true),
-                onClick = { onColorSelected(token.hex) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun CustomColorSwatch(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Palette,
-            contentDescription = null,
-            tint = Primary,
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}
-
-@Composable
-private fun EditorColorSwatch(
-    color: Color,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(color)
-            .border(
-                width = if (selected) 3.dp else 1.dp,
-                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                shape = CircleShape
-            )
-            .padding(if (selected) 4.dp else 0.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        if (selected) {
-            Icon(
-                imageVector = Icons.Outlined.Check,
-                contentDescription = null,
-                tint = if (color.luminanceSafe() > 0.62f) MaterialTheme.colorScheme.onSurface else Surface,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
+    EditorColorRow(
+        selectedColorHex = selectedColorHex,
+        onOpenColorPicker = onOpenColorPicker,
+        onColorSelected = onColorSelected,
+        colors = textColorTokens.map { EditorColorToken(it.hex, it.swatch) }
+    )
 }
 
 @Composable
@@ -408,57 +314,15 @@ private fun TextColorPickerPanel(
     onDone: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedColor by remember(selectedColorHex) {
-        mutableStateOf(textColorTokens.firstOrNull { it.hex.equals(selectedColorHex, ignoreCase = true) }
-            ?: TextColorToken(selectedColorHex, parseHexColor(selectedColorHex, textColorTokens.first().swatch)))
-    }
-    var hsv by remember(selectedColorHex) { mutableStateOf(selectedColor.swatch.toTextHsv()) }
-
-    fun applyHsv(nextHsv: TextHsvColor) {
-        hsv = nextHsv
-        val hex = nextHsv.toHex()
-        selectedColor = TextColorToken(hex, nextHsv.toColor())
-        onColorSelected(hex)
-    }
-
-    Column(
+    EditorColorPickerPanel(
+        selectedColorHex = selectedColorHex,
+        onColorSelected = onColorSelected,
+        onDone = onDone,
         modifier = modifier
             .navigationBarsPadding()
             .heightIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        EditorTextPanelHeader(
-            title = stringResource(id = R.string.editor_panel_colors),
-            onDone = onDone
-        )
-        ColorField(
-            hsv = hsv,
-            onColorChanged = ::applyHsv,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(138.dp)
-        )
-        HueBar(
-            hue = hsv.hue,
-            onHueChanged = { hue -> applyHsv(hsv.copy(hue = hue)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(10.dp)
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(textColorTokens, key = { it.hex }) { token ->
-                EditorColorSwatch(
-                    color = token.swatch,
-                    selected = token.hex.equals(selectedColor.hex, ignoreCase = true),
-                    onClick = {
-                        selectedColor = token
-                        hsv = token.swatch.toTextHsv()
-                        onColorSelected(token.hex)
-                    }
-                )
-            }
-        }
-    }
+        colors = textColorTokens.map { EditorColorToken(it.hex, it.swatch) }
+    )
 }
 
 @Composable
@@ -486,12 +350,15 @@ private fun TextLibraryPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 items(textPresets, key = { it.id }) { preset ->
                     val selected = preset.id == selectedPresetId
                     Column(
                         modifier = Modifier
-                            .width(128.dp)
+                            .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (selected) 0.75f else 0.42f))
                             .border(
@@ -514,12 +381,9 @@ private fun TextLibraryPanel(
                             color = parseHexColor(
                                 preset.style.textColorHex ?: "#201A2E",
                                 MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-                        Text(
-                            text = preset.title,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            softWrap = true,
+                            maxLines = 3
                         )
                     }
                 }

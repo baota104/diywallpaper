@@ -42,6 +42,7 @@ data class EditorUiState(
     val previewPath: String? = null,
     val exportedImagePath: String? = null,
     val pendingPreviewDesignId: String? = null,
+    val pendingExitAfterSave: Boolean = false,
     val isDeleted: Boolean = false,
     val errorMessage: String? = null,
     val saveMessage: String? = null
@@ -50,8 +51,18 @@ data class EditorUiState(
 data class BrushToolConfig(
     val erase: Boolean,
     val colorHex: String,
-    val brushSize: Float
+    val brushSize: Float,
+    val preset: BrushPresetType = BrushPresetType.SOLID,
+    val patternBrushName: String? = null
 )
+
+enum class BrushPresetType {
+    SOLID,
+    DASHED,
+    OUTLINE,
+    GLOW,
+    PATTERN
+}
 
 data class TextBrushToolConfig(
     val text: String,

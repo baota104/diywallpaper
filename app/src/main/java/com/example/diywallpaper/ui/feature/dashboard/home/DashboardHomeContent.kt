@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
+import com.example.diywallpaper.ui.components.AppImageBackground
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,22 +51,21 @@ fun DashboardHomeContent(
 ) {
     Scaffold(
         modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Surface(
-                color = MaterialTheme.colorScheme.background,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 10.dp,
                 shape = RoundedCornerShape(bottomStart = 15.dp, bottomEnd = 15.dp)
             ) {
                 CenterAlignedTopAppBar(
                     colors = androidx.compose.material3.TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     title = {
                         Text(
                             text = stringResource(id = R.string.dashboard_tab_home),
-                            style = MaterialTheme.typography.displayMedium,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
                     },
@@ -74,21 +75,19 @@ fun DashboardHomeContent(
         },
         snackbarHost = { SnackbarHost(hostState = androidx.compose.material3.SnackbarHostState()) }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            AppImageBackground()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             HomeCreateFromScratchCard(onClick = onCreateFromScratch)
-
-            Text(
-                text = stringResource(id = R.string.home_explore_wallpapers),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
 
             HomeCategoryChips(
                 categories = uiState.categories,
@@ -138,6 +137,7 @@ fun DashboardHomeContent(
                     }
                 }
             }
+        }
         }
     }
 }

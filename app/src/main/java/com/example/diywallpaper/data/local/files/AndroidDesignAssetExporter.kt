@@ -4,13 +4,16 @@ import android.content.Context
 import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathMeasure
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
@@ -22,6 +25,10 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.view.WindowManager
 import androidx.core.content.res.ResourcesCompat
+import com.example.diywallpaper.core.render.androidDrawLayerRenderBounds
+import com.example.diywallpaper.core.render.androidTextLayerRenderSpec
+import com.example.diywallpaper.core.render.androidTextRenderSpec
+import com.example.diywallpaper.core.render.androidTextTrailStampPoints
 import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
@@ -48,7 +55,6 @@ import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
-import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.domain.repository.DesignAssetExporter
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -68,6 +74,7 @@ class AndroidDesignAssetExporter @Inject constructor(
     private val designFileStore: DesignFileStore,
     private val okHttpClient: OkHttpClient
 ) : DesignAssetExporter {
+    private val patternBrushBitmapCache = mutableMapOf<String, Bitmap?>()
 
     override suspend fun export(project: EditorProject): AppResult<GeneratedDesignAssets> {
         return withContext(Dispatchers.IO) {
@@ -296,19 +303,31 @@ class AndroidDesignAssetExporter @Inject constructor(
         layer: TextLayer
     ) {
         if (layer.text.isBlank()) return
-        val size = textRenderSize()
-        val rect = centerScaledLayerRect(
-            offsetX = layer.transform.offsetX,
-            offsetY = layer.transform.offsetY,
-            width = size.width,
-            height = size.height,
-            scale = layer.transform.scale
+        val spec = androidTextLayerRenderSpec(
+            context = context,
+            layer = layer,
+            fontResId = editorFontResId(layer.style.fontFamilyId)
         )
-        val textPaint = buildTextPaint(layer.style, layer.transform.alpha, layer.transform.scale)
+        val bounds = spec.bounds
+        val rect = RectF(
+            layer.transform.offsetX + bounds.minX,
+            layer.transform.offsetY + bounds.minY,
+            layer.transform.offsetX + bounds.maxX,
+            layer.transform.offsetY + bounds.maxY
+        )
+        val textPaint = buildTextPaint(layer.style, layer.transform.alpha, transformScale = 1f)
 
         canvas.save()
-        canvas.rotate(layer.transform.rotation, rect.centerX(), rect.centerY())
-        canvas.drawText(layer.text, rect.left, rect.top + textPaint.textSize, textPaint)
+        canvas.translate(rect.centerX(), rect.centerY())
+        canvas.rotate(layer.transform.rotation)
+        canvas.scale(layer.transform.scale, layer.transform.scale)
+        canvas.translate(-rect.centerX(), -rect.centerY())
+        canvas.drawText(
+            layer.text,
+            layer.transform.offsetX + spec.drawX,
+            layer.transform.offsetY + spec.drawBaselineY,
+            textPaint
+        )
         canvas.restore()
     }
 
@@ -320,7 +339,11 @@ class AndroidDesignAssetExporter @Inject constructor(
     ) {
         if (layers.isEmpty()) return
         layers.sortedBy { it.zIndex }.forEach { layer ->
-            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            val bounds = androidDrawLayerRenderBounds(
+                context = context,
+                drawData = layer.drawData,
+                fontResIdFor = ::editorFontResId
+            ) ?: layer.drawData.renderBounds() ?: return@forEach
             val rect = RectF(
                 layer.transform.offsetX + bounds.minX,
                 layer.transform.offsetY + bounds.minY,
@@ -362,7 +385,11 @@ class AndroidDesignAssetExporter @Inject constructor(
         eraseColor: Int,
         assetCache: MutableMap<String, Bitmap?>
     ) {
-        val bounds = layer.drawData.renderBounds()
+        val bounds = androidDrawLayerRenderBounds(
+            context = context,
+            drawData = layer.drawData,
+            fontResIdFor = ::editorFontResId
+        ) ?: layer.drawData.renderBounds()
         canvas.save()
         if (bounds != null) {
             val rect = RectF(
@@ -410,11 +437,20 @@ class AndroidDesignAssetExporter @Inject constructor(
                 }
 
                 is DrawLayerData.TextTrail -> {
+                    val textSpec = androidTextRenderSpec(
+                        context = context,
+                        text = drawData.text,
+                        style = drawData.textStyle,
+                        fontResId = editorFontResId(drawData.textStyle.fontFamilyId)
+                    )
                     val textPaint = buildTextPaint(drawData.textStyle, alpha = 1f, transformScale = 1f)
-                    drawData.points.forEachIndexed { index, point ->
-                        if (index % 2 == 0) {
-                            canvas.drawText(drawData.text, point.x, point.y, textPaint)
-                        }
+                    androidTextTrailStampPoints(drawData).forEach { point ->
+                        canvas.drawText(
+                            drawData.text,
+                            point.x + textSpec.drawX,
+                            point.y + textSpec.drawBaselineY,
+                            textPaint
+                        )
                     }
                 }
             }
@@ -430,13 +466,61 @@ class AndroidDesignAssetExporter @Inject constructor(
         clear: Boolean
     ) {
         if (stroke.points.size < 2) return
+        val patternStyle = stroke.brushStyle as? BrushStyleSpec.Pattern
+        val patternBitmap = patternStyle?.let { style -> loadPatternBrushBitmap(style.drawableName) }
+        if (!clear && patternStyle != null && patternBitmap != null && !patternBitmap.isRecycled) {
+            drawPatternStroke(canvas, stroke, patternBitmap, patternStyle)
+            return
+        }
+        val path = Path().apply {
+            moveTo(stroke.points.first().x, stroke.points.first().y)
+            stroke.points.drop(1).forEach { point ->
+                lineTo(point.x, point.y)
+            }
+        }
+        if (!clear) {
+            when (val style = stroke.brushStyle) {
+                is BrushStyleSpec.Outline -> {
+                    drawNativeStroke(
+                        canvas = canvas,
+                        path = path,
+                        color = parseColor(style.strokeColorHex, Color.BLACK),
+                        strokeWidth = stroke.strokeWidth * 1.55f
+                    )
+                    drawNativeStroke(
+                        canvas = canvas,
+                        path = path,
+                        color = parseColor(style.fillColorHex, Color.BLACK),
+                        strokeWidth = stroke.strokeWidth
+                    )
+                    return
+                }
+
+                is BrushStyleSpec.Glow -> {
+                    drawGlowStroke(
+                        canvas = canvas,
+                        path = path,
+                        strokeWidth = stroke.strokeWidth,
+                        color = parseColor(style.colorHex, Color.WHITE),
+                        glowColor = parseColor(style.glowColorHex, Color.WHITE)
+                    )
+                    return
+                }
+
+                else -> Unit
+            }
+        }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = stroke.strokeWidth
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
-            this.color = color
+            this.color = when (val style = stroke.brushStyle) {
+                is BrushStyleSpec.Dashed -> parseColor(style.colorHex, color)
+                is BrushStyleSpec.Solid -> parseColor(style.colorHex, color)
+                else -> color
+            }
             if (clear) {
                 xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
             } else if (stroke.brushStyle is BrushStyleSpec.Gradient) {
@@ -449,15 +533,93 @@ class AndroidDesignAssetExporter @Inject constructor(
                     null,
                     Shader.TileMode.CLAMP
                 )
+            } else if (stroke.brushStyle is BrushStyleSpec.Dashed) {
+                pathEffect = DashPathEffect(
+                    floatArrayOf(strokeWidth * 1.7f, strokeWidth * 1.25f),
+                    0f
+                )
             }
         }
+        canvas.drawPath(path, paint)
+    }
+
+    private fun drawNativeStroke(
+        canvas: Canvas,
+        path: Path,
+        color: Int,
+        strokeWidth: Float
+    ) {
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                this.strokeWidth = strokeWidth
+            }
+        )
+    }
+
+    private fun drawGlowStroke(
+        canvas: Canvas,
+        path: Path,
+        strokeWidth: Float,
+        color: Int,
+        glowColor: Int
+    ) {
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = glowColor.withAlpha(0.45f)
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                this.strokeWidth = strokeWidth * 1.9f
+                maskFilter = BlurMaskFilter(strokeWidth * 0.9f, BlurMaskFilter.Blur.NORMAL)
+            }
+        )
+        drawNativeStroke(canvas, path, color, strokeWidth)
+    }
+
+    private fun drawPatternStroke(
+        canvas: Canvas,
+        stroke: BrushStroke,
+        bitmap: Bitmap,
+        patternStyle: BrushStyleSpec.Pattern
+    ) {
         val path = Path().apply {
             moveTo(stroke.points.first().x, stroke.points.first().y)
             stroke.points.drop(1).forEach { point ->
                 lineTo(point.x, point.y)
             }
         }
-        canvas.drawPath(path, paint)
+        val measure = PathMeasure(path, false)
+        val length = measure.length
+        if (length <= 0f) return
+        val iconScale = (stroke.strokeWidth / bitmap.width.coerceAtLeast(1)) *
+            patternStyle.scale.coerceAtLeast(0.1f)
+        val step = (bitmap.width * iconScale * patternStyle.spacingFactor.coerceAtLeast(0.35f))
+            .coerceAtLeast(4f)
+        val position = FloatArray(2)
+        val tangent = FloatArray(2)
+        val matrix = Matrix()
+        var distance = step / 2f
+        while (distance < length && measure.getPosTan(distance, position, tangent)) {
+            matrix.reset()
+            matrix.setScale(iconScale, iconScale)
+            matrix.postTranslate(
+                -bitmap.width * iconScale / 2f,
+                -bitmap.height * iconScale / 2f
+            )
+            if (patternStyle.followPath) {
+                val angle = Math.toDegrees(kotlin.math.atan2(tangent[1], tangent[0]).toDouble()).toFloat()
+                matrix.postRotate(angle)
+            }
+            matrix.postTranslate(position[0], position[1])
+            canvas.drawBitmap(bitmap, matrix, null)
+            distance += step
+        }
     }
 
     private fun buildTextPaint(
@@ -666,8 +828,24 @@ class AndroidDesignAssetExporter @Inject constructor(
         return when (val style = stroke.brushStyle) {
             is BrushStyleSpec.Gradient -> parseColor(style.colors.firstOrNull(), Color.BLACK)
             is BrushStyleSpec.Solid -> parseColor(style.colorHex, Color.BLACK)
+            is BrushStyleSpec.Dashed -> parseColor(style.colorHex, Color.BLACK)
+            is BrushStyleSpec.Outline -> parseColor(style.fillColorHex, Color.BLACK)
+            is BrushStyleSpec.Glow -> parseColor(style.colorHex, Color.WHITE)
+            is BrushStyleSpec.Pattern -> parseColor(stroke.colorHex, Color.BLACK)
             null -> parseColor(stroke.colorHex, Color.BLACK)
         }
+    }
+
+    private fun loadPatternBrushBitmap(drawableName: String): Bitmap? {
+        if (patternBrushBitmapCache.containsKey(drawableName)) {
+            return patternBrushBitmapCache[drawableName]
+        }
+        val resId = context.resources.getIdentifier(drawableName, "drawable", context.packageName)
+        val bitmap = resId.takeIf { it != 0 }?.let {
+            BitmapFactory.decodeResource(context.resources, it)
+        }
+        patternBrushBitmapCache[drawableName] = bitmap
+        return bitmap
     }
 
     private fun resolveTextColor(style: TextStyleSpec): Int {
@@ -701,6 +879,10 @@ class AndroidDesignAssetExporter @Inject constructor(
 
     private fun parseColor(hex: String?, fallback: Int): Int {
         return runCatching { Color.parseColor(hex ?: "") }.getOrDefault(fallback)
+    }
+
+    private fun Int.withAlpha(alpha: Float): Int {
+        return (this and 0x00FFFFFF) or ((alpha * 255).roundToInt().coerceIn(0, 255) shl 24)
     }
 
     private fun resolveStaticOutputSize(project: EditorProject): StaticOutputSize {

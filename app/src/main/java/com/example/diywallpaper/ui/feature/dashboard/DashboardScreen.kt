@@ -109,7 +109,8 @@ fun DashboardScreen(
                     onCreateFromScratch = onCreateFromScratch
                 )
                 DashboardTab.Collection -> DashboardCollectionScreen(
-                    onOpenDesign = onOpenDesignEditor
+                    onOpenDesign = onOpenDesignEditor,
+                    onOpenPreview = onOpenPreview
                 )
                 DashboardTab.Settings -> DashboardSettingsScreen()
             }

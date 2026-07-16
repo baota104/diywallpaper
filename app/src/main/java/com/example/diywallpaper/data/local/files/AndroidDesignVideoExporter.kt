@@ -4,12 +4,15 @@ import android.content.Context
 import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Movie
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathMeasure
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
@@ -30,10 +33,15 @@ import android.media.MediaMuxer
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.content.res.ResourcesCompat
+import com.example.diywallpaper.core.render.androidDrawLayerRenderBounds
+import com.example.diywallpaper.core.render.androidTextLayerRenderSpec
+import com.example.diywallpaper.core.render.androidTextRenderSpec
+import com.example.diywallpaper.core.render.androidTextTrailStampPoints
 import com.example.diywallpaper.core.result.AppError
 import com.example.diywallpaper.core.result.AppResult
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
+import com.example.diywallpaper.domain.model.design.BrushStyleSpec
 import com.example.diywallpaper.domain.model.design.DrawLayer
 import com.example.diywallpaper.domain.model.design.DrawLayerData
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -49,7 +57,6 @@ import com.example.diywallpaper.domain.model.design.designViewportTransform
 import com.example.diywallpaper.domain.model.design.photoRenderSize
 import com.example.diywallpaper.domain.model.design.renderBounds
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
-import com.example.diywallpaper.domain.model.design.textRenderSize
 import com.example.diywallpaper.domain.repository.DesignVideoExporter
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -67,6 +74,8 @@ class AndroidDesignVideoExporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient
 ) : DesignVideoExporter {
+    private val patternBrushBitmapCache = mutableMapOf<String, Bitmap?>()
+
     override suspend fun export(project: EditorProject): AppResult<String> = withContext(Dispatchers.IO) {
         runCatching {
             val outputFile = File(context.cacheDir, "live_design/${project.id}_${project.updatedAt}.mp4")
@@ -346,29 +355,38 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleY: Float
     ): Boolean {
         if (layer.text.isBlank()) return false
-        val size = textRenderSize()
-        val rect = centerScaledLayerRect(
-            offsetX = layer.transform.offsetX,
-            offsetY = layer.transform.offsetY,
-            width = size.width,
-            height = size.height,
-            scale = layer.transform.scale,
-            scaleX = scaleX,
-            scaleY = scaleY
+        val spec = androidTextLayerRenderSpec(
+            context = context,
+            layer = layer,
+            fontResId = editorFontResId(layer.style.fontFamilyId)
+        )
+        val bounds = spec.bounds
+        val rect = RectF(
+            (layer.transform.offsetX + bounds.minX) * scaleX,
+            (layer.transform.offsetY + bounds.minY) * scaleY,
+            (layer.transform.offsetX + bounds.maxX) * scaleX,
+            (layer.transform.offsetY + bounds.maxY) * scaleY
         )
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = resolveTextColor(layer)
             textSize = layer.style.fontSizeSp *
                 context.resources.displayMetrics.scaledDensity *
-                ((scaleX + scaleY) / 2f) *
-                layer.transform.scale
+                ((scaleX + scaleY) / 2f)
             alpha = (layer.transform.alpha * 255).toInt().coerceIn(0, 255)
             isFakeBoldText = true
             typeface = ResourcesCompat.getFont(context, editorFontResId(layer.style.fontFamilyId))
         }
         canvas.save()
-        canvas.rotate(layer.transform.rotation, rect.centerX(), rect.centerY())
-        canvas.drawText(layer.text, rect.left, rect.top + paint.textSize, paint)
+        canvas.translate(rect.centerX(), rect.centerY())
+        canvas.rotate(layer.transform.rotation)
+        canvas.scale(layer.transform.scale, layer.transform.scale)
+        canvas.translate(-rect.centerX(), -rect.centerY())
+        canvas.drawText(
+            layer.text,
+            (layer.transform.offsetX + spec.drawX) * scaleX,
+            (layer.transform.offsetY + spec.drawBaselineY) * scaleY,
+            paint
+        )
         canvas.restore()
         return true
     }
@@ -381,7 +399,11 @@ class AndroidDesignVideoExporter @Inject constructor(
     ) {
         if (layers.isEmpty()) return
         layers.sortedBy { it.zIndex }.forEach { layer ->
-            val bounds = layer.drawData.renderBounds() ?: return@forEach
+            val bounds = androidDrawLayerRenderBounds(
+                context = context,
+                drawData = layer.drawData,
+                fontResIdFor = ::editorFontResId
+            ) ?: layer.drawData.renderBounds() ?: return@forEach
             val rect = RectF(
                 layer.transform.offsetX + bounds.minX,
                 layer.transform.offsetY + bounds.minY,
@@ -429,7 +451,11 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleX: Float,
         scaleY: Float
     ): Boolean {
-        val bounds = layer.drawData.renderBounds()
+        val bounds = androidDrawLayerRenderBounds(
+            context = context,
+            drawData = layer.drawData,
+            fontResIdFor = ::editorFontResId
+        ) ?: layer.drawData.renderBounds()
         canvas.save()
         if (bounds != null) {
             val rect = RectF(
@@ -476,23 +502,154 @@ class AndroidDesignVideoExporter @Inject constructor(
         clear: Boolean
     ) {
         if (stroke.points.size < 2) return
+        val patternStyle = stroke.brushStyle as? BrushStyleSpec.Pattern
+        val patternBitmap = patternStyle?.let { style -> loadPatternBrushBitmap(style.drawableName) }
+        if (!clear && patternStyle != null && patternBitmap != null && !patternBitmap.isRecycled) {
+            drawPatternStroke(canvas, stroke, patternBitmap, patternStyle, scaleX, scaleY)
+            return
+        }
         val path = Path()
         stroke.points.forEachIndexed { index, point ->
             val x = point.x * scaleX
             val y = point.y * scaleY
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
+        val width = stroke.strokeWidth * ((scaleX + scaleY) / 2f)
+        if (!clear) {
+            when (val style = stroke.brushStyle) {
+                is BrushStyleSpec.Outline -> {
+                    drawNativeStroke(
+                        canvas = canvas,
+                        path = path,
+                        color = parseColor(style.strokeColorHex, Color.BLACK),
+                        strokeWidth = width * 1.55f
+                    )
+                    drawNativeStroke(
+                        canvas = canvas,
+                        path = path,
+                        color = parseColor(style.fillColorHex, Color.BLACK),
+                        strokeWidth = width
+                    )
+                    return
+                }
+
+                is BrushStyleSpec.Glow -> {
+                    drawGlowStroke(
+                        canvas = canvas,
+                        path = path,
+                        strokeWidth = width,
+                        color = parseColor(style.colorHex, Color.WHITE),
+                        glowColor = parseColor(style.glowColorHex, Color.WHITE)
+                    )
+                    return
+                }
+
+                else -> Unit
+            }
+        }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color
+            this.color = when (val style = stroke.brushStyle) {
+                is BrushStyleSpec.Dashed -> parseColor(style.colorHex, color)
+                is BrushStyleSpec.Solid -> parseColor(style.colorHex, color)
+                else -> color
+            }
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
-            strokeWidth = stroke.strokeWidth * ((scaleX + scaleY) / 2f)
+            strokeWidth = width
             if (clear) {
                 xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            } else if (stroke.brushStyle is BrushStyleSpec.Dashed) {
+                pathEffect = DashPathEffect(
+                    floatArrayOf(width * 1.7f, width * 1.25f),
+                    0f
+                )
             }
         }
         canvas.drawPath(path, paint)
+    }
+
+    private fun drawNativeStroke(
+        canvas: Canvas,
+        path: Path,
+        color: Int,
+        strokeWidth: Float
+    ) {
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                this.strokeWidth = strokeWidth
+            }
+        )
+    }
+
+    private fun drawGlowStroke(
+        canvas: Canvas,
+        path: Path,
+        strokeWidth: Float,
+        color: Int,
+        glowColor: Int
+    ) {
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = glowColor.withAlpha(0.45f)
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                this.strokeWidth = strokeWidth * 1.9f
+                maskFilter = BlurMaskFilter(strokeWidth * 0.9f, BlurMaskFilter.Blur.NORMAL)
+            }
+        )
+        drawNativeStroke(canvas, path, color, strokeWidth)
+    }
+
+    private fun drawPatternStroke(
+        canvas: Canvas,
+        stroke: BrushStroke,
+        bitmap: Bitmap,
+        patternStyle: BrushStyleSpec.Pattern,
+        scaleX: Float,
+        scaleY: Float
+    ) {
+        val path = Path().apply {
+            moveTo(stroke.points.first().x * scaleX, stroke.points.first().y * scaleY)
+            stroke.points.drop(1).forEach { point ->
+                lineTo(point.x * scaleX, point.y * scaleY)
+            }
+        }
+        val measure = PathMeasure(path, false)
+        val length = measure.length
+        if (length <= 0f) return
+        val averageScale = ((scaleX + scaleY) / 2f).coerceAtLeast(0.0001f)
+        val iconScale = (stroke.strokeWidth / bitmap.width.coerceAtLeast(1)) *
+            patternStyle.scale.coerceAtLeast(0.1f) *
+            averageScale
+        val step = (bitmap.width * iconScale * patternStyle.spacingFactor.coerceAtLeast(0.35f))
+            .coerceAtLeast(4f)
+        val position = FloatArray(2)
+        val tangent = FloatArray(2)
+        val matrix = android.graphics.Matrix()
+        var distance = step / 2f
+        while (distance < length && measure.getPosTan(distance, position, tangent)) {
+            matrix.reset()
+            matrix.setScale(iconScale, iconScale)
+            matrix.postTranslate(
+                -bitmap.width * iconScale / 2f,
+                -bitmap.height * iconScale / 2f
+            )
+            if (patternStyle.followPath) {
+                val angle = Math.toDegrees(kotlin.math.atan2(tangent[1], tangent[0]).toDouble()).toFloat()
+                matrix.postRotate(angle)
+            }
+            matrix.postTranslate(position[0], position[1])
+            canvas.drawBitmap(bitmap, matrix, null)
+            distance += step
+        }
     }
 
     private fun drawTextTrail(
@@ -502,16 +659,25 @@ class AndroidDesignVideoExporter @Inject constructor(
         scaleY: Float
     ): Boolean {
         if (data.points.isEmpty() || data.text.isBlank()) return false
+        val textSpec = androidTextRenderSpec(
+            context = context,
+            text = data.text,
+            style = data.textStyle,
+            fontResId = editorFontResId(data.textStyle.fontFamilyId)
+        )
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = resolveTextBrushColor(data.textStyle.textBrush, data.textStyle.textColorHex)
             textSize = data.textStyle.fontSizeSp * context.resources.displayMetrics.scaledDensity * ((scaleX + scaleY) / 2f)
             isFakeBoldText = true
             typeface = ResourcesCompat.getFont(context, editorFontResId(data.textStyle.fontFamilyId))
         }
-        data.points.forEachIndexed { index, point ->
-            if (index % 2 == 0) {
-                canvas.drawText(data.text, point.x * scaleX, point.y * scaleY, paint)
-            }
+        androidTextTrailStampPoints(data).forEach { point ->
+            canvas.drawText(
+                data.text,
+                (point.x + textSpec.drawX) * scaleX,
+                (point.y + textSpec.drawBaselineY) * scaleY,
+                paint
+            )
         }
         return true
     }
@@ -702,6 +868,22 @@ class AndroidDesignVideoExporter @Inject constructor(
 
     private fun parseColor(hex: String?, fallback: Int): Int {
         return runCatching { Color.parseColor(hex) }.getOrDefault(fallback)
+    }
+
+    private fun Int.withAlpha(alpha: Float): Int {
+        return (this and 0x00FFFFFF) or ((alpha * 255).roundToInt().coerceIn(0, 255) shl 24)
+    }
+
+    private fun loadPatternBrushBitmap(drawableName: String): Bitmap? {
+        if (patternBrushBitmapCache.containsKey(drawableName)) {
+            return patternBrushBitmapCache[drawableName]
+        }
+        val resId = context.resources.getIdentifier(drawableName, "drawable", context.packageName)
+        val bitmap = resId.takeIf { it != 0 }?.let {
+            BitmapFactory.decodeResource(context.resources, it)
+        }
+        patternBrushBitmapCache[drawableName] = bitmap
+        return bitmap
     }
 
     private fun Int.even(): Int = if (this % 2 == 0) this else this - 1
