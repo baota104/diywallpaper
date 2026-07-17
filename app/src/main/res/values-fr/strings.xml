@@ -145,4 +145,11 @@
     <string name="crop_title">Rogner</string>
     <string name="crop_next">Suivant</string>
     <string name="crop_ratio_title">Ratio</string>
+
+    <string name="editor_next_confirm_title">Continuer vers l\'aperçu ?</string>
+    <string name="editor_next_confirm_message">Votre création sera enregistrée et préparée avant d\'ouvrir l\'aperçu sur l\'appareil.</string>
+    <string name="editor_next_confirm_action">Continuer</string>
+    <string name="editor_next_confirm_cancel">Annuler</string>
+    <string name="editor_prepare_template_loading">Veuillez patienter un instant</string>
+    <string name="editor_prepare_preview_loading">préparation du brouillon...</string>
 </resources>

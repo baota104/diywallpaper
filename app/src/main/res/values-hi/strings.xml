@@ -145,4 +145,11 @@
     <string name="crop_title">क्रॉप करें</string>
     <string name="crop_next">अगला</string>
     <string name="crop_ratio_title">अनुपात</string>
+
+    <string name="editor_next_confirm_title">क्या पूर्वावलोकन पर जाएं?</string>
+    <string name="editor_next_confirm_message">डिवाइस पूर्वावलोकन खोलने से पहले आपका डिज़ाइन सहेजा और तैयार किया जाएगा।</string>
+    <string name="editor_next_confirm_action">जारी रखें</string>
+    <string name="editor_next_confirm_cancel">रद्द करें</string>
+    <string name="editor_prepare_template_loading">कृपया एक क्षण प्रतीक्षा करें</string>
+    <string name="editor_prepare_preview_loading">ड्राफ्ट तैयार किया जा रहा है...</string>
 </resources>

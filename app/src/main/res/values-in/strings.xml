@@ -145,4 +145,11 @@
     <string name="crop_title">Potong</string>
     <string name="crop_next">Selanjutnya</string>
     <string name="crop_ratio_title">Rasio</string>
+
+    <string name="editor_next_confirm_title">Lanjutkan ke pratinjau?</string>
+    <string name="editor_next_confirm_message">Desain Anda akan disimpan dan disiapkan sebelum membuka pratinjau perangkat.</string>
+    <string name="editor_next_confirm_action">Lanjutkan</string>
+    <string name="editor_next_confirm_cancel">Batal</string>
+    <string name="editor_prepare_template_loading">Mohon tunggu sebentar</string>
+    <string name="editor_prepare_preview_loading">menyiapkan draf...</string>
 </resources>

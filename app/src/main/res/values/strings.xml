@@ -96,6 +96,12 @@
     <string name="editor_undo">Undo</string>
     <string name="editor_redo">Redo</string>
     <string name="editor_preview">Preview</string>
+    <string name="editor_next_confirm_title">Continue to preview?</string>
+    <string name="editor_next_confirm_message">Your design will be saved and prepared before opening the device preview.</string>
+    <string name="editor_next_confirm_action">Continue</string>
+    <string name="editor_next_confirm_cancel">Cancel</string>
+    <string name="editor_prepare_template_loading">Please, wait a moment</string>
+    <string name="editor_prepare_preview_loading">preparing the draft...</string>
     <string name="editor_canvas_placeholder">Canvas preview will be connected in the next phase.</string>
     <string name="editor_source_diy">DIY template</string>
     <string name="editor_source_wallpaper">Wallpaper</string>

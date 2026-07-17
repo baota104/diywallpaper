@@ -145,4 +145,11 @@
     <string name="crop_title">Recortar</string>
     <string name="crop_next">Siguiente</string>
     <string name="crop_ratio_title">Relación</string>
+
+    <string name="editor_next_confirm_title">¿Continuar a la vista previa?</string>
+    <string name="editor_next_confirm_message">Tu diseño se guardará y preparará antes de abrir la vista previa en el dispositivo.</string>
+    <string name="editor_next_confirm_action">Continuar</string>
+    <string name="editor_next_confirm_cancel">Cancelar</string>
+    <string name="editor_prepare_template_loading">Por favor, espere un momento</string>
+    <string name="editor_prepare_preview_loading">preparando el borrador...</string>
 </resources>

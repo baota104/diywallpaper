@@ -145,4 +145,11 @@
     <string name="crop_title">Cắt ảnh</string>
     <string name="crop_next">Tiếp</string>
     <string name="crop_ratio_title">Tỷ lệ</string>
+
+    <string name="editor_next_confirm_title">Tiếp tục đến xem trước?</string>
+    <string name="editor_next_confirm_message">Thiết kế của bạn sẽ được lưu và chuẩn bị trước khi mở xem trước trên thiết bị.</string>
+    <string name="editor_next_confirm_action">Tiếp tục</string>
+    <string name="editor_next_confirm_cancel">Hủy</string>
+    <string name="editor_prepare_template_loading">Vui lòng đợi trong giây lát</string>
+    <string name="editor_prepare_preview_loading">đang chuẩn bị bản nháp...</string>
 </resources>

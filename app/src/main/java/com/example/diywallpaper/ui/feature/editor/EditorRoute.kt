@@ -14,8 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.CropPresetRatio
 import com.example.diywallpaper.domain.model.design.CropSpec
 import com.example.diywallpaper.domain.model.design.EditorBackground
@@ -25,6 +27,8 @@ import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.StrokePoint
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextStyleSpec
+import com.example.diywallpaper.ui.common.CommonConfirmDialog
+import com.example.diywallpaper.ui.common.CommonLoadingDialog
 import com.example.diywallpaper.ui.components.editor.EditorExitConfirmDialog
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
 import java.io.File
@@ -49,6 +53,8 @@ fun EditorRoute(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showExitConfirmDialog by remember { mutableStateOf(false) }
+    var showNextConfirmDialog by remember { mutableStateOf(false) }
+    var showNextLoadingDialog by rememberSaveable { mutableStateOf(false) }
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -97,8 +103,15 @@ fun EditorRoute(
 
     LaunchedEffect(uiState.pendingPreviewDesignId) {
         val designId = uiState.pendingPreviewDesignId ?: return@LaunchedEffect
+        showNextLoadingDialog = false
         onNextClick(designId)
         viewModel.consumePendingPreviewNavigation()
+    }
+
+    LaunchedEffect(uiState.errorMessage, uiState.isSaving, uiState.isGeneratingAssets) {
+        if (uiState.errorMessage != null && !uiState.isSaving && !uiState.isGeneratingAssets) {
+            showNextLoadingDialog = false
+        }
     }
 
     LaunchedEffect(uiState.pendingExitAfterSave) {
@@ -166,7 +179,11 @@ fun EditorRoute(
         onRedoClick = viewModel::redo,
         onPreviewClick = viewModel::enterPreviewMode,
         onExitPreviewClick = viewModel::exitPreviewMode,
-        onNextClick = viewModel::preparePreviewNavigation,
+        onNextClick = {
+            if (!uiState.isSaving && !uiState.isGeneratingAssets) {
+                showNextConfirmDialog = true
+            }
+        },
         onToolSelected = viewModel::setActiveTool,
         onDismissToolSheet = viewModel::dismissToolSheet,
         onRemoveSelectedLayer = viewModel::removeSelectedLayer,
@@ -280,6 +297,41 @@ fun EditorRoute(
             )
         }
     )
+
+    if (showNextConfirmDialog) {
+        CommonConfirmDialog(
+            title = stringResource(id = R.string.editor_next_confirm_title),
+            message = stringResource(id = R.string.editor_next_confirm_message),
+            confirmText = stringResource(id = R.string.editor_next_confirm_action),
+            dismissText = stringResource(id = R.string.editor_next_confirm_cancel),
+            confirmEnabled = !uiState.isSaving && !uiState.isGeneratingAssets,
+            onConfirmClick = {
+                showNextConfirmDialog = false
+                showNextLoadingDialog = true
+                viewModel.preparePreviewNavigation()
+            },
+            onDismissRequest = {
+                if (!uiState.isSaving && !uiState.isGeneratingAssets) {
+                    showNextConfirmDialog = false
+                }
+            }
+        )
+    }
+
+    if (
+        args.sourceType == com.example.diywallpaper.domain.model.preview.PreviewSourceType.DIY &&
+        uiState.isLoading
+    ) {
+        CommonLoadingDialog(
+            message = stringResource(id = R.string.editor_prepare_template_loading)
+        )
+    }
+
+    if (showNextLoadingDialog) {
+        CommonLoadingDialog(
+            message = stringResource(id = R.string.editor_prepare_preview_loading)
+        )
+    }
 
     if (showExitConfirmDialog) {
         EditorExitConfirmDialog(

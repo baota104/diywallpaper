@@ -133,7 +133,7 @@ dependencies {
     kapt("androidx.hilt:hilt-compiler:1.2.0")
 
 // --- 13. COMPOSE UI TESTING ---
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
+    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

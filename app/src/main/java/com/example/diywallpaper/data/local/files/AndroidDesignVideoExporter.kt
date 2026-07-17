@@ -356,7 +356,9 @@ class AndroidDesignVideoExporter @Inject constructor(
             .flatMap { (element, keys) ->
                 val localImagePath = element.localImagePath ?: return@flatMap emptyList()
                 val bitmap = assets.bitmaps[localImagePath] ?: return@flatMap emptyList()
-                val replacement = DiyLottieReplacementImage(bitmap = bitmap, crop = element.effectiveLottieCrop())
+                val replacement = DiyLottieReplacementImage(
+                    bitmap = renderDiyLottieReplacementBitmap(element, bitmap)
+                )
                 keys.map { key -> key to replacement }
             }
             .toMap()

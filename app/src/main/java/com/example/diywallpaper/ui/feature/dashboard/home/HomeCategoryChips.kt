@@ -1,6 +1,7 @@
 package com.example.diywallpaper.ui.feature.dashboard.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -23,8 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.HomeFeedCategory
 import com.example.diywallpaper.ui.theme.PinkStrong
 
@@ -45,6 +48,7 @@ fun HomeCategoryChips(
         HomeCategoryChip(
             title = ALL_CATEGORY_TITLE,
             iconUrl = null,
+            localIconRes = R.drawable.brush5,
             isDiy = false,
             isSelected = selectedCategoryId == ALL_CATEGORY_ID,
             onClick = { onCategorySelected(ALL_CATEGORY_ID) }
@@ -55,6 +59,7 @@ fun HomeCategoryChips(
             HomeCategoryChip(
                 title = category.title,
                 iconUrl = category.iconUrl,
+                localIconRes = null,
                 isDiy = category.id == "DIY",
                 isSelected = isSelected,
                 onClick = { onCategorySelected(category.id) }
@@ -67,6 +72,7 @@ fun HomeCategoryChips(
 private fun HomeCategoryChip(
     title: String,
     iconUrl: String?,
+    localIconRes: Int?,
     isDiy: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit
@@ -89,6 +95,7 @@ private fun HomeCategoryChip(
         ) {
                 CategoryIcon(
                     iconUrl = iconUrl,
+                    localIconRes = localIconRes,
                     isDiy = isDiy,
                     isSelected = isSelected
                 )
@@ -105,6 +112,7 @@ private fun HomeCategoryChip(
 @Composable
 private fun CategoryIcon(
     iconUrl: String?,
+    localIconRes: Int?,
     isDiy: Boolean,
     isSelected: Boolean
 ) {
@@ -125,6 +133,17 @@ private fun CategoryIcon(
             !iconUrl.isNullOrBlank() -> {
                 AsyncImage(
                     model = iconUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            localIconRes != null -> {
+                Image(
+                    painter = painterResource(id = localIconRes),
                     contentDescription = null,
                     modifier = Modifier
                         .size(18.dp)

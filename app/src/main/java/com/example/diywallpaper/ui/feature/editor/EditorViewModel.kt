@@ -25,7 +25,6 @@ import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.TextStyleSpec
 import com.example.diywallpaper.domain.model.design.photoRenderSize
-import com.example.diywallpaper.domain.model.design.requiresLiveExport
 import com.example.diywallpaper.domain.usecase.design.BuildDiyEditorProjectUseCase
 import com.example.diywallpaper.domain.usecase.design.CreateDesignDraftUseCase
 import com.example.diywallpaper.domain.usecase.design.DeleteDesignUseCase
@@ -887,19 +886,6 @@ class EditorViewModel @Inject constructor(
                     }
                     return@launch
                 }
-            }
-
-            if (persistedProject.requiresLiveExport()) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        isGeneratingAssets = false,
-                        pendingPreviewDesignId = designId,
-                        saveMessage = SAVE_SUCCESS_MESSAGE,
-                        errorMessage = null
-                    )
-                }
-                return@launch
             }
 
             when (val result = generateDesignAssetsUseCase(persistedProject)) {

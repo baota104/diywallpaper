@@ -71,8 +71,8 @@ import com.example.diywallpaper.core.render.androidTextTrailStampPoints
 import com.example.diywallpaper.core.render.buildAndroidTextPaint
 import com.example.diywallpaper.data.local.files.DiyLottieAssetDelegate
 import com.example.diywallpaper.data.local.files.DiyLottieReplacementImage
-import com.example.diywallpaper.data.local.files.effectiveLottieCrop
 import com.example.diywallpaper.data.local.files.lottieAssetKeys
+import com.example.diywallpaper.data.local.files.renderDiyLottieReplacementBitmap
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
@@ -397,7 +397,9 @@ private fun buildPreviewLottieReplacementBitmapMap(
         .flatMap { (element, keys) ->
             val localImagePath = element.localImagePath ?: return@flatMap emptyList()
             val bitmap = BitmapFactory.decodeFile(localImagePath) ?: return@flatMap emptyList()
-            val replacement = DiyLottieReplacementImage(bitmap = bitmap, crop = element.effectiveLottieCrop())
+            val replacement = DiyLottieReplacementImage(
+                bitmap = renderDiyLottieReplacementBitmap(element, bitmap)
+            )
             keys.map { key -> key to replacement }
         }
         .toMap()
