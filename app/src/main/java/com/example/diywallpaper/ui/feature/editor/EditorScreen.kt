@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.diywallpaper.R
+import com.example.diywallpaper.domain.model.design.DesignSourceType
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.EditorProject
@@ -105,6 +106,7 @@ fun EditorScreen(
     )
     val previewProject = uiState.toPreviewProject()
     val openedToolSheet = uiState.openedToolSheet
+    val isDiyTemplate = uiState.sourceType == DesignSourceType.DIY_TEMPLATE
     val inlineToolSheet = openedToolSheet?.takeIf {
         it == EditorTool.BRUSH_DRAW ||
             it == EditorTool.BRUSH_ERASE ||
@@ -170,7 +172,8 @@ fun EditorScreen(
                         } else {
                             onToolSelected(tool)
                         }
-                    }
+                    },
+                    showBackgroundTool = !isDiyTemplate
                 )
             }
         }
@@ -373,7 +376,8 @@ private fun EditorUiState.toPreviewProject(): EditorProject? {
                 templateId = diyTemplateId ?: projectId ?: "editor_preview_diy",
                 templateSnapshot = templateSnapshot,
                 isLive = isDiyLive,
-                diyAnimationUrl = diyAnimationUrl
+                diyAnimationUrl = diyAnimationUrl,
+                diyAnimationPathOrUrl = diyAnimationPathOrUrl
             )
         } else {
             EditorProjectSource.Scratch

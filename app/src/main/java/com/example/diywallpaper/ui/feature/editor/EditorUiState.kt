@@ -20,6 +20,7 @@ data class EditorUiState(
     val diyTemplateId: String? = null,
     val isDiyLive: Boolean = false,
     val diyAnimationUrl: String? = null,
+    val diyAnimationPathOrUrl: String? = null,
     val templateSnapshot: DiyTemplateSnapshot? = null,
     val canvas: EditorCanvasSpec? = null,
     val background: EditorBackground? = null,

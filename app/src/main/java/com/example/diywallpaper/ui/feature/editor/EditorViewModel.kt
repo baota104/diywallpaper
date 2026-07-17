@@ -174,6 +174,9 @@ class EditorViewModel @Inject constructor(
     }
 
     fun setActiveTool(tool: EditorTool) {
+        if (tool == EditorTool.BACKGROUND && _uiState.value.sourceType == DesignSourceType.DIY_TEMPLATE) {
+            return
+        }
         val resolvedTool = if (tool == EditorTool.BRUSH_DRAW && activeBrushConfig?.erase == true) {
             EditorTool.BRUSH_ERASE
         } else {
@@ -1418,6 +1421,7 @@ class EditorViewModel @Inject constructor(
             diyTemplateId = (source as? EditorProjectSource.Diy)?.templateId,
             isDiyLive = (source as? EditorProjectSource.Diy)?.isLive == true,
             diyAnimationUrl = (source as? EditorProjectSource.Diy)?.diyAnimationUrl,
+            diyAnimationPathOrUrl = (source as? EditorProjectSource.Diy)?.diyAnimationPathOrUrl,
             templateSnapshot = (source as? EditorProjectSource.Diy)?.templateSnapshot,
             canvas = canvas,
             background = background,

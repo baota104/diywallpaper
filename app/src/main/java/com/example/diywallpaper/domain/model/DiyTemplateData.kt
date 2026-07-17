@@ -5,5 +5,6 @@ data class DiyTemplateData(
     val height: Int,
     val background: String,
     val elements: List<DiyElement>,
-    val placeholders: List<PhotoPlaceholder>
+    val placeholders: List<PhotoPlaceholder>,
+    val animationJsonPath: String? = null
 )

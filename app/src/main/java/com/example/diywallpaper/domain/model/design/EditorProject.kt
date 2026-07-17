@@ -23,7 +23,8 @@ sealed interface EditorProjectSource {
         val templateId: String,
         val templateSnapshot: DiyTemplateSnapshot,
         val isLive: Boolean = false,
-        val diyAnimationUrl: String? = null
+        val diyAnimationUrl: String? = null,
+        val diyAnimationPathOrUrl: String? = null
     ) : EditorProjectSource
 
     @Serializable
@@ -97,6 +98,7 @@ data class DiyTemplateElementSnapshot(
     val fontSize: Float = 50f,
     val fontColor: String = "#000000",
     val fontFamilyIndex: Int = 0,
+    val srcName: String = "",
     val transform: LayerTransform? = null,
     val localImagePath: String? = null,
     val crop: CropSpec? = null,

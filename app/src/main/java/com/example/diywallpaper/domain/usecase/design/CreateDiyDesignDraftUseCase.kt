@@ -51,6 +51,7 @@ internal fun DiyTemplate.toEditorProject(
             templateId = id,
             isLive = type == DiyTemplateType.DIY_LIVE,
             diyAnimationUrl = diyAnimationUrl,
+            diyAnimationPathOrUrl = templateData.animationJsonPath ?: diyAnimationUrl,
             templateSnapshot = DiyTemplateSnapshot(
                 width = templateData.width,
                 height = templateData.height,
@@ -71,6 +72,7 @@ internal fun DiyTemplate.toEditorProject(
                         fontSize = element.fontSize,
                         fontColor = element.fontColor,
                         fontFamilyIndex = element.fontFamilyIndex,
+                        srcName = element.srcName,
                         maskPathOrUrl = element.maskUrl ?: placeholder?.maskUrl,
                         previewPathOrUrl = element.previewPathOrUrl(placeholder)
                     )

@@ -14,7 +14,8 @@ import okhttp3.Request
 
 data class DiyTemplateAssetCacheResult(
     val dataJsonFile: File,
-    val assetDirectory: File?
+    val assetDirectory: File?,
+    val animationJsonFile: File?
 )
 
 @Singleton
@@ -55,7 +56,8 @@ class DiyTemplateAssetCache @Inject constructor(
 
         DiyTemplateAssetCacheResult(
             dataJsonFile = dataJsonFile,
-            assetDirectory = assetDirectory
+            assetDirectory = assetDirectory,
+            animationJsonFile = assetDirectory?.findAnimationJsonFile()
         )
     }
 
@@ -107,5 +109,23 @@ class DiyTemplateAssetCache @Inject constructor(
 
     private fun File.readTextOrNull(): String? {
         return runCatching { takeIf { exists() }?.readText() }.getOrNull()
+    }
+
+    private fun File.findAnimationJsonFile(): File? {
+        val animationDirectory = File(this, "animation").takeIf { it.exists() && it.isDirectory }
+        val preferred = animationDirectory
+            ?.let { File(it, "data.json") }
+            ?.takeIf { it.exists() && it.isFile }
+        if (preferred != null) return preferred
+
+        return animationDirectory
+            ?.walkTopDown()
+            ?.firstOrNull { it.isFile && it.extension.equals("json", ignoreCase = true) }
+            ?: walkTopDown().firstOrNull { file ->
+                file.isFile &&
+                    file.extension.equals("json", ignoreCase = true) &&
+                    file.name != "data.json" &&
+                    file.path.contains("${File.separator}animation${File.separator}")
+            }
     }
 }

@@ -1,9 +1,11 @@
 package com.example.diywallpaper.ui.feature.preview.device
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BlurMaskFilter
 import android.graphics.Matrix
 import android.graphics.PathMeasure
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.text.TextPaint
 import androidx.compose.foundation.Canvas
@@ -20,8 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -55,6 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
 import coil.compose.AsyncImage
+import com.airbnb.lottie.LottieComposition
+import com.airbnb.lottie.LottieCompositionFactory
+import com.airbnb.lottie.LottieDrawable
 import com.example.diywallpaper.R
 import com.example.diywallpaper.core.render.AndroidTextLayerRenderSpec
 import com.example.diywallpaper.core.render.androidDrawLayerRenderBounds
@@ -62,6 +69,10 @@ import com.example.diywallpaper.core.render.androidTextLayerRenderSpec
 import com.example.diywallpaper.core.render.androidTextRenderSpec
 import com.example.diywallpaper.core.render.androidTextTrailStampPoints
 import com.example.diywallpaper.core.render.buildAndroidTextPaint
+import com.example.diywallpaper.data.local.files.DiyLottieAssetDelegate
+import com.example.diywallpaper.data.local.files.DiyLottieReplacementImage
+import com.example.diywallpaper.data.local.files.effectiveLottieCrop
+import com.example.diywallpaper.data.local.files.lottieAssetKeys
 import com.example.diywallpaper.domain.model.design.BrushStroke
 import com.example.diywallpaper.domain.model.design.BrushStackItem
 import com.example.diywallpaper.domain.model.design.BrushStyleSpec
@@ -91,6 +102,9 @@ import com.example.diywallpaper.domain.model.design.renderSize
 import com.example.diywallpaper.domain.model.design.stickerRenderSize
 import com.example.diywallpaper.ui.feature.editor.editorFontFamily
 import com.example.diywallpaper.ui.feature.editor.editorFontResId
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -173,15 +187,39 @@ private fun SavedDesignProjectCanvas(
         )
 
         val diySource = project.source as? EditorProjectSource.Diy
+        val diyLottiePreviewState = diySource
+            ?.takeIf { it.isLive }
+            ?.let { rememberDiyLottiePreviewData(it) }
         if (diySource != null) {
-            SavedDiyTemplateContent(
-                templateId = diySource.templateId,
-                templateSnapshot = diySource.templateSnapshot,
-                placeholders = project.placeholders,
-                viewport = viewport,
-                frameTimeMs = frameTimeMs,
-                isAnimating = isAnimating && diySource.isLive
-            )
+            val diyLottiePreview = diyLottiePreviewState?.value
+            if (diyLottiePreview != null) {
+                SavedDiyLottieTemplateContent(
+                    source = diySource,
+                    previewData = diyLottiePreview,
+                    viewport = viewport,
+                    frameTimeMs = frameTimeMs
+                )
+                SavedDiyTemplateContent(
+                    templateId = diySource.templateId,
+                    templateSnapshot = diySource.templateSnapshot,
+                    placeholders = project.placeholders,
+                    viewport = viewport,
+                    frameTimeMs = frameTimeMs,
+                    isAnimating = false,
+                    shouldDrawElement = { element ->
+                        element.shouldDrawOverLottie(diyLottiePreview.defaultBitmaps.keys)
+                    }
+                )
+            } else {
+                SavedDiyTemplateContent(
+                    templateId = diySource.templateId,
+                    templateSnapshot = diySource.templateSnapshot,
+                    placeholders = project.placeholders,
+                    viewport = viewport,
+                    frameTimeMs = frameTimeMs,
+                    isAnimating = isAnimating && diySource.isLive
+                )
+            }
         }
 
         project.layers
@@ -225,16 +263,159 @@ private fun SavedDesignProjectCanvas(
 }
 
 @Composable
+private fun rememberDiyLottiePreviewData(
+    source: EditorProjectSource.Diy
+): State<DiyLottiePreviewData?> {
+    val context = LocalContext.current
+    return produceState<DiyLottiePreviewData?>(
+        initialValue = null,
+        context,
+        source.templateId,
+        source.diyAnimationPathOrUrl,
+        source.templateSnapshot
+    ) {
+        value = withContext(Dispatchers.IO) {
+            loadDiyLottiePreviewData(context, source)
+        }
+    }
+}
+
+@Composable
+private fun SavedDiyLottieTemplateContent(
+    source: EditorProjectSource.Diy,
+    previewData: DiyLottiePreviewData,
+    viewport: DesignViewportTransform,
+    frameTimeMs: Long
+) {
+    val drawable = remember(previewData) {
+        LottieDrawable().apply {
+            setComposition(previewData.composition)
+            setImageAssetDelegate(
+                DiyLottieAssetDelegate(
+                    replacementBitmaps = previewData.replacementBitmaps,
+                    defaultBitmaps = previewData.defaultBitmaps
+                )
+            )
+        }
+    }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val durationMs = previewData.composition.duration
+            .roundToInt()
+            .coerceAtLeast(1)
+        drawable.bounds = Rect(
+            0,
+            0,
+            source.templateSnapshot.width,
+            source.templateSnapshot.height
+        )
+        drawable.progress = ((frameTimeMs % durationMs).toFloat() / durationMs)
+            .coerceIn(0f, 1f)
+        drawIntoCanvas { canvas ->
+            val nativeCanvas = canvas.nativeCanvas
+            nativeCanvas.save()
+            nativeCanvas.translate(viewport.offsetX, viewport.offsetY)
+            nativeCanvas.scale(viewport.scale, viewport.scale)
+            drawable.draw(nativeCanvas)
+            nativeCanvas.restore()
+        }
+    }
+}
+
+private data class DiyLottiePreviewData(
+    val composition: LottieComposition,
+    val replacementBitmaps: Map<String, DiyLottieReplacementImage>,
+    val defaultBitmaps: Map<String, Bitmap?>
+)
+
+private fun loadDiyLottiePreviewData(
+    context: android.content.Context,
+    source: EditorProjectSource.Diy
+): DiyLottiePreviewData? {
+    val animationFile = resolveDiyLottieAnimationFile(context, source) ?: return null
+    val composition = LottieCompositionFactory
+        .fromJsonStringSync(
+            animationFile.readText(),
+            source.diyLottieCompositionCacheKey(animationFile.absolutePath)
+        )
+        .value
+        ?: return null
+    return DiyLottiePreviewData(
+        composition = composition,
+        replacementBitmaps = buildPreviewLottieReplacementBitmapMap(source),
+        defaultBitmaps = loadPreviewLottieDefaultImageAssets(animationFile)
+    )
+}
+
+private fun resolveDiyLottieAnimationFile(
+    context: android.content.Context,
+    source: EditorProjectSource.Diy
+): File? {
+    source.diyAnimationPathOrUrl
+        ?.takeIf { it.isNotBlank() && !it.startsWith("http://") && !it.startsWith("https://") }
+        ?.let(::File)
+        ?.takeIf { it.exists() && it.isFile }
+        ?.let { return it }
+
+    val assetDirectory = File(context.filesDir, "diy_templates/${source.templateId}/assets")
+        .takeIf { it.exists() && it.isDirectory }
+        ?: return null
+    File(assetDirectory, "animation/data.json")
+        .takeIf { it.exists() && it.isFile }
+        ?.let { return it }
+    return File(assetDirectory, "animation")
+        .takeIf { it.exists() && it.isDirectory }
+        ?.walkTopDown()
+        ?.firstOrNull { it.isFile && it.extension.equals("json", ignoreCase = true) }
+}
+
+private fun loadPreviewLottieDefaultImageAssets(animationFile: File): Map<String, Bitmap?> {
+    val animationDirectory = animationFile.parentFile ?: return emptyMap()
+    return sequenceOf(
+        File(animationDirectory, "images"),
+        animationDirectory
+    )
+        .filter { it.exists() && it.isDirectory }
+        .flatMap { directory -> directory.walkTopDown().filter { it.isFile } }
+        .filter { file -> file.extension.lowercase() in LOTTIE_IMAGE_EXTENSIONS }
+        .flatMap { file ->
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            listOf(
+                file.name to bitmap,
+                file.relativeToOrSelf(animationDirectory).invariantSeparatorsPath to bitmap
+            )
+        }
+        .toMap()
+}
+
+private fun buildPreviewLottieReplacementBitmapMap(
+    source: EditorProjectSource.Diy
+): Map<String, DiyLottieReplacementImage> {
+    return source.templateSnapshot.elements
+        .filter { it.isImageElement() }
+        .map { element -> element to element.lottieAssetKeys() }
+        .filter { (element, keys) -> !element.localImagePath.isNullOrBlank() && keys.isNotEmpty() }
+        .flatMap { (element, keys) ->
+            val localImagePath = element.localImagePath ?: return@flatMap emptyList()
+            val bitmap = BitmapFactory.decodeFile(localImagePath) ?: return@flatMap emptyList()
+            val replacement = DiyLottieReplacementImage(bitmap = bitmap, crop = element.effectiveLottieCrop())
+            keys.map { key -> key to replacement }
+        }
+        .toMap()
+}
+
+@Composable
 private fun SavedDiyTemplateContent(
     templateId: String,
     templateSnapshot: DiyTemplateSnapshot,
     placeholders: List<PhotoPlaceholderLayer>,
     viewport: DesignViewportTransform,
     frameTimeMs: Long,
-    isAnimating: Boolean
+    isAnimating: Boolean,
+    shouldDrawElement: (DiyTemplateElementSnapshot) -> Boolean = { true }
 ) {
     templateSnapshot.elements
         .sortedBy { it.zIndex }
+            .filter(shouldDrawElement)
             .forEach { element ->
                 when {
                 element.isTextElement() -> {
@@ -583,6 +764,35 @@ private fun DiyTemplateElementSnapshot.isAssetElement(): Boolean {
 private fun DiyTemplateElementSnapshot.isImageElement(): Boolean {
     return type.equals("IMAGE", ignoreCase = true) ||
         type.equals("Image", ignoreCase = true)
+}
+
+private fun DiyTemplateElementSnapshot.lottieAssetKeys(): List<String> {
+    return lottieAssetKeys(srcName)
+        .ifEmpty { previewPathOrUrl?.let(::lottieAssetKeys).orEmpty() }
+        .ifEmpty { assetUrl?.let(::lottieAssetKeys).orEmpty() }
+}
+
+private fun DiyTemplateElementSnapshot.shouldDrawOverLottie(lottieDefaultKeys: Set<String>): Boolean {
+    if (isImageElement()) return false
+    val keys = lottieAssetKeys()
+    return keys.isEmpty() || keys.none { it in lottieDefaultKeys }
+}
+
+private fun EditorProjectSource.Diy.diyLottieCompositionCacheKey(animationSource: String): String {
+    val replacementFingerprint = templateSnapshot.elements
+        .filter { it.isImageElement() }
+        .joinToString(separator = "|") { element ->
+            listOf(
+                element.id,
+                element.srcName,
+                element.localImagePath.orEmpty(),
+                element.crop?.normalizedLeft,
+                element.crop?.normalizedTop,
+                element.crop?.normalizedRight,
+                element.crop?.normalizedBottom
+            ).joinToString(separator = ":")
+        }
+    return "diy-lottie-preview:$templateId:$animationSource:$replacementFingerprint"
 }
 
 private fun DiyTemplateElementSnapshot.matchPlaceholder(
@@ -1289,6 +1499,8 @@ private fun DrawLayerData.isBrushStackRenderable(): Boolean {
         this is DrawLayerData.EraseStroke ||
         this is DrawLayerData.BrushStack
 }
+
+private val LOTTIE_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")
 
 private inline fun DrawLayerData.forEachBrushStackItem(block: (BrushStackItem) -> Unit) {
     when (this) {

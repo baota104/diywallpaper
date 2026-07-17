@@ -85,6 +85,7 @@ class DiyRepositoryImpl @Inject constructor(
             )
             dto.toDomain(diyDataUrl)
                 .withLocalAssets(cacheResult.assetDirectory)
+                .copy(animationJsonPath = cacheResult.animationJsonFile?.absolutePath)
         }.fold(
             onSuccess = { AppResult.Success(it) },
             onFailure = { AppResult.Error(it.toAppError("diy_data")) }

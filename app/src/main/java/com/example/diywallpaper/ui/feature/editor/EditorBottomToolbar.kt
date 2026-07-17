@@ -48,6 +48,7 @@ import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
 fun EditorBottomToolbar(
     selectedTool: EditorTool,
     onToolSelected: (EditorTool) -> Unit,
+    showBackgroundTool: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -67,7 +68,9 @@ fun EditorBottomToolbar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                editorToolItems.forEach { item ->
+                editorToolItems
+                    .filter { showBackgroundTool || it.tool != EditorTool.BACKGROUND }
+                    .forEach { item ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
