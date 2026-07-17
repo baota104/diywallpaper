@@ -172,6 +172,9 @@ fun AppNavGraph(
                 },
                 onOpenDesignEditor = { designId ->
                     navController.navigate(Screen.EditorDesign.createRoute(designId))
+                },
+                onOpenLanguage = {
+                    navController.navigate(Screen.Language.route)
                 }
             )
         }

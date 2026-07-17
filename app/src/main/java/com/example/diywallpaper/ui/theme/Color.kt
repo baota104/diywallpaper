@@ -1,6 +1,5 @@
 package com.example.diywallpaper.ui.theme
 import androidx.compose.ui.graphics.Color
-import com.google.android.gms.common.util.CollectionUtils.listOf
 
 // Background Colors
 val Background = Color(0xFFFFF8FC)
@@ -43,6 +42,15 @@ val PurPleLight = Color(0xFFE8DDFF)
 val BrushPanelControl = Color(0xFFF0E7F5)
 val BrushAccentPink = Color(0xFFFD56A7)
 val BrushSelectedSoft = Color(0xFFFFF1F7)
+
+// Settings
+val SettingsCardBackground = Color(0xFFFEF7FF)
+val SettingsLanguageIconBackground = Color(0xFFDEDCE3)
+val SettingsVersionIconBackground = Color(0xFFF4EAFF)
+val SettingsPolicyGreen = Color(0xFF006949)
+val SettingsSharePink = Color(0xFFB4136D)
+val SettingsVersionTint = Color(0xFF7B7486)
+
 // Gradients
 val PrimaryGradient = listOf(
     Color(0xFFFF7AB6),

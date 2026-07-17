@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -53,7 +54,6 @@ import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.UserDesign
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
 import com.example.diywallpaper.ui.common.CommonConfirmDialog
-import com.example.diywallpaper.ui.components.AppImageBackground
 import com.example.diywallpaper.ui.feature.dashboard.home.HomeWallpaperGrid
 import com.example.diywallpaper.ui.preview.core.PreviewVisibilityInfo
 import com.example.diywallpaper.ui.theme.AuroraGradient
@@ -115,6 +115,7 @@ private fun DashboardCollectionContent(
 ) {
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Surface(
@@ -130,7 +131,11 @@ private fun DashboardCollectionContent(
                         Text(
                             text = stringResource(id = R.string.collection_title),
                             style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .basicMarquee(iterations = Int.MAX_VALUE)
                         )
                     },
                     navigationIcon = {
@@ -158,8 +163,6 @@ private fun DashboardCollectionContent(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            AppImageBackground()
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
+import com.example.diywallpaper.ui.components.AppImageBackground
 import com.example.diywallpaper.ui.feature.dashboard.collection.DashboardCollectionScreen
 import com.example.diywallpaper.ui.feature.dashboard.home.DashboardHomeScreen
 import com.example.diywallpaper.ui.feature.dashboard.settings.DashboardSettingsScreen
@@ -82,37 +83,44 @@ fun DashboardScreen(
     initialTab: String = DashboardTab.Home.routeKey,
     onOpenPreview: (sourceType: PreviewSourceType, categoryId: String, itemId: String) -> Unit = { _, _, _ -> },
     onCreateFromScratch: () -> Unit = {},
-    onOpenDesignEditor: (designId: String) -> Unit = {}
+    onOpenDesignEditor: (designId: String) -> Unit = {},
+    onOpenLanguage: () -> Unit = {}
 ) {
     var selectedTab by rememberSaveable(initialTab) {
         mutableStateOf(DashboardTab.fromRouteKey(initialTab))
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            DashboardBottomBar(
-                selectedTab = selectedTab,
-                onTabSelected = { tab -> selectedTab = tab }
-            )
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when (selectedTab) {
-                DashboardTab.Home -> DashboardHomeScreen(
-                    onOpenPreview = onOpenPreview,
-                    onCreateFromScratch = onCreateFromScratch
+    Box(modifier = Modifier.fillMaxSize()) {
+        AppImageBackground()
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                DashboardBottomBar(
+                    selectedTab = selectedTab,
+                    onTabSelected = { tab -> selectedTab = tab }
                 )
-                DashboardTab.Collection -> DashboardCollectionScreen(
-                    onOpenDesign = onOpenDesignEditor,
-                    onOpenPreview = onOpenPreview
-                )
-                DashboardTab.Settings -> DashboardSettingsScreen()
+            }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = paddingValues.calculateTopPadding())
+            ) {
+                when (selectedTab) {
+                    DashboardTab.Home -> DashboardHomeScreen(
+                        onOpenPreview = onOpenPreview,
+                        onCreateFromScratch = onCreateFromScratch
+                    )
+                    DashboardTab.Collection -> DashboardCollectionScreen(
+                        onOpenDesign = onOpenDesignEditor,
+                        onOpenPreview = onOpenPreview
+                    )
+                    DashboardTab.Settings -> DashboardSettingsScreen(
+                        onOpenLanguage = onOpenLanguage
+                    )
+                }
             }
         }
     }

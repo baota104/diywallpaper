@@ -33,7 +33,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.preview.PreviewSourceType
-import com.example.diywallpaper.ui.components.AppImageBackground
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +50,7 @@ fun DashboardHomeContent(
 ) {
     Scaffold(
         modifier = modifier,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Surface(
@@ -80,7 +80,6 @@ fun DashboardHomeContent(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            AppImageBackground()
             Column(
                 modifier = Modifier
                     .fillMaxSize()

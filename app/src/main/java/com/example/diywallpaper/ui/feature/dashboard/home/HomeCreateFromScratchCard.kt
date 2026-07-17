@@ -3,6 +3,7 @@ package com.example.diywallpaper.ui.feature.dashboard.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.diywallpaper.R
 import com.example.diywallpaper.ui.theme.AuroraGradient
@@ -68,7 +70,7 @@ fun HomeCreateFromScratchCard(
                 Text(
                     text = stringResource(id = R.string.home_create_from_scratch),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -103,7 +105,11 @@ fun HomeCreateFromScratchCard(
                         Text(
                             text = stringResource(id = R.string.welcome_btn_start),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .basicMarquee(iterations = Int.MAX_VALUE)
                         )
                     }
                 }
