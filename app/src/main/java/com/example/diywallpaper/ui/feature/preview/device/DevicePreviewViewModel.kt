@@ -42,6 +42,7 @@ class DevicePreviewViewModel @Inject constructor(
     val uiState: StateFlow<DevicePreviewUiState> = _uiState.asStateFlow()
 
     private var observeJob: Job? = null
+    private var pendingLiveWallpaperApplyReturn = false
 
     fun bind(args: PreviewArgs) {
         observeJob?.cancel()
@@ -116,6 +117,20 @@ class DevicePreviewViewModel @Inject constructor(
         }
     }
 
+    fun onExternalApplyResumed() {
+        if (!pendingLiveWallpaperApplyReturn) return
+        pendingLiveWallpaperApplyReturn = false
+        _uiState.update { state ->
+            state.copy(navigateHomeAfterApply = true)
+        }
+    }
+
+    fun onHomeNavigationConsumed() {
+        _uiState.update { state ->
+            state.copy(navigateHomeAfterApply = false)
+        }
+    }
+
     fun dismissTargetDialog() {
         _uiState.update { it.copy(showTargetDialog = false) }
     }
@@ -137,6 +152,7 @@ class DevicePreviewViewModel @Inject constructor(
                         onApplyStarted()
                         when (val result = setLiveDesignWallpaperUseCase(designProject)) {
                             is AppResult.Success -> {
+                                pendingLiveWallpaperApplyReturn = true
                                 _uiState.update { currentState ->
                                     currentState.copy(
                                         isApplyingWallpaper = false,
@@ -174,6 +190,7 @@ class DevicePreviewViewModel @Inject constructor(
                         )
                     ) {
                         is AppResult.Success -> {
+                            pendingLiveWallpaperApplyReturn = true
                             _uiState.update { currentState ->
                                 currentState.copy(
                                     isApplyingWallpaper = false,
@@ -224,9 +241,16 @@ class DevicePreviewViewModel @Inject constructor(
                     target = target
                 )
             ) {
-                is AppResult.Success -> onApplyFinished(
-                    successMessage = "Wallpaper applied successfully."
-                )
+                is AppResult.Success -> {
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            isApplyingWallpaper = false,
+                            successMessage = "Wallpaper applied successfully.",
+                            errorMessage = null,
+                            navigateHomeAfterApply = true
+                        )
+                    }
+                }
                 is AppResult.Error -> onApplyFinished(
                     errorMessage = result.error.toPreviewMessage()
                 )

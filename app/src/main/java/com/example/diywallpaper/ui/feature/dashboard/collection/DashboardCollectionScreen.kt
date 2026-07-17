@@ -138,23 +138,23 @@ private fun DashboardCollectionContent(
                             modifier = Modifier
                                 .basicMarquee(iterations = Int.MAX_VALUE)
                         )
-                    },
-                    navigationIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Palette,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 22.dp)
-                        )
-                    },
-                    actions = {
-                        Icon(
-                            imageVector = Icons.Rounded.BrushIcon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 22.dp)
-                        )
                     }
+//                    navigationIcon = {
+//                        Icon(
+//                            imageVector = Icons.Rounded.Palette,
+//                            contentDescription = null,
+//                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+//                            modifier = Modifier.padding(start = 22.dp)
+//                        )
+//                    },
+//                    actions = {
+//                        Icon(
+//                            imageVector = Icons.Rounded.BrushIcon,
+//                            contentDescription = null,
+//                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+//                            modifier = Modifier.padding(end = 22.dp)
+//                        )
+//                    }
                 )
             }
         }

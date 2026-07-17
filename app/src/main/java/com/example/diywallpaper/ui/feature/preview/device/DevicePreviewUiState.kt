@@ -19,6 +19,7 @@ data class DevicePreviewUiState(
     val showTargetDialog: Boolean = false,
     val launchIntent: Intent? = null,
     val designExportPath: String? = null,
+    val navigateHomeAfterApply: Boolean = false,
     val successMessage: String? = null,
     val errorMessage: String? = null
 )

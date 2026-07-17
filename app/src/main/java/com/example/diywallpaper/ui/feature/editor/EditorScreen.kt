@@ -45,6 +45,7 @@ import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.EditorProject
 import com.example.diywallpaper.domain.model.design.EditorProjectSource
 import com.example.diywallpaper.domain.model.design.TextLayer
+import com.example.diywallpaper.ui.common.hideKeyboardOnTapOutside
 import com.example.diywallpaper.ui.feature.preview.device.SavedDesignDevicePreview
 import com.example.diywallpaper.ui.feature.preview.PreviewArgs
 import com.example.diywallpaper.ui.theme.DIYWallpaperTheme
@@ -181,6 +182,7 @@ fun EditorScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .hideKeyboardOnTapOutside()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 12.dp),

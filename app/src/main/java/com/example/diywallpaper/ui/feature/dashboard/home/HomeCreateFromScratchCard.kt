@@ -49,7 +49,7 @@ fun HomeCreateFromScratchCard(
         Row(
             modifier = Modifier
                 .background(Brush.linearGradient(AuroraGradient))
-                .padding(horizontal = 18.dp, vertical = 5.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

@@ -55,6 +55,8 @@ import com.example.diywallpaper.domain.model.design.EditorTextPreset
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.model.design.TextLayer
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
+import com.example.diywallpaper.ui.common.consumeTapForKeyboardDismiss
+import com.example.diywallpaper.ui.common.hideKeyboardOnTapOutside
 import com.example.diywallpaper.ui.components.editor.EditorColorPickerPanel
 import com.example.diywallpaper.ui.components.editor.EditorColorRow
 import com.example.diywallpaper.ui.components.editor.EditorColorToken
@@ -156,7 +158,7 @@ fun TextToolPanel(
                     onDismiss()
                 }
             },
-            modifier = modifier
+            modifier = modifier.consumeTapForKeyboardDismiss()
         )
     }
 }
@@ -179,6 +181,7 @@ private fun TextMainPanel(
         modifier = modifier
             .navigationBarsPadding()
             .imePadding()
+            .hideKeyboardOnTapOutside()
             .heightIn(max = 320.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {

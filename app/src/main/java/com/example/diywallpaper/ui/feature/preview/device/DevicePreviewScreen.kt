@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,7 +27,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.diywallpaper.R
 import com.example.diywallpaper.ui.feature.preview.DeviceMockPreview
 import com.example.diywallpaper.ui.feature.preview.PreviewBottomActionContainer
@@ -41,10 +46,12 @@ fun DevicePreviewScreen(
     args: PreviewArgs,
     onBackClick: () -> Unit,
     onApplyClick: (PreviewArgs) -> Unit,
+    onApplyCompletedToHome: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DevicePreviewViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(args) {
         viewModel.bind(args)
     }
@@ -54,6 +61,24 @@ fun DevicePreviewScreen(
         val intent = uiState.launchIntent ?: return@LaunchedEffect
         context.startActivity(intent)
         viewModel.onLaunchIntentConsumed()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onExternalApplyResumed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(uiState.navigateHomeAfterApply) {
+        if (!uiState.navigateHomeAfterApply) return@LaunchedEffect
+        viewModel.onHomeNavigationConsumed()
+        onApplyCompletedToHome()
     }
 
     DevicePreviewContent(
@@ -139,6 +164,7 @@ fun DevicePreviewContent(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
+                                .navigationBarsPadding()
                                 .padding(horizontal = 18.dp, vertical = 18.dp)
                         )
                     }
@@ -150,6 +176,7 @@ fun DevicePreviewContent(
                             isError = uiState.errorMessage != null,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
                                 .padding(start = 24.dp, end = 24.dp, bottom = 92.dp)
                         )
                     }

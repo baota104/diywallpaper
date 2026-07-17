@@ -190,7 +190,7 @@ fun AppNavGraph(
             val args = backStackEntry.toPreviewArgs()
             PreviewCarouselScreen(
                 args = args,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navController.popBackStackSafely() },
                 onOpenDevicePreview = { previewArgs ->
                     navController.navigate(
                         Screen.DevicePreview.createRoute(
@@ -258,7 +258,7 @@ fun AppNavGraph(
                 onOpenImportPhotoCrop = { imageUri ->
                     navController.navigate(Screen.ImportPhotoCrop.createRoute(imageUri))
                 },
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navController.popBackStackSafely() },
                 onNextClick = { designId ->
                     navController.navigate(Screen.DevicePreviewDesign.createRoute(designId))
                 }
@@ -314,7 +314,7 @@ fun AppNavGraph(
                 onOpenImportPhotoCrop = { imageUri ->
                     navController.navigate(Screen.ImportPhotoCrop.createRoute(imageUri))
                 },
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navController.popBackStackSafely() },
                 onNextClick = { targetDesignId ->
                     navController.navigate(Screen.DevicePreviewDesign.createRoute(targetDesignId))
                 }
@@ -330,7 +330,7 @@ fun AppNavGraph(
             val imageUri = Uri.decode(backStackEntry.arguments?.getString("imageUri").orEmpty())
             ImportPhotoCropScreen(
                 imageUri = imageUri,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navController.popBackStackSafely() },
                 onNextClick = { cropSpec ->
                     navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_uri", imageUri)
                     navController.previousBackStackEntry?.savedStateHandle?.set("import_photo_left", cropSpec.normalizedLeft.toString())
@@ -354,8 +354,16 @@ fun AppNavGraph(
             val args = backStackEntry.toPreviewArgs()
             DevicePreviewScreen(
                 args = args,
-                onBackClick = { navController.popBackStack() },
-                onApplyClick = { _ -> }
+                onBackClick = { navController.popBackStackSafely() },
+                onApplyClick = { _ -> },
+                onApplyCompletedToHome = {
+                    navController.navigate(Screen.DashBoard.createRoute("home")) {
+                        popUpTo(Screen.DashBoard.route) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 
@@ -372,8 +380,16 @@ fun AppNavGraph(
                     initialItemId = designId,
                     sourceType = PreviewSourceType.CREATE_FROM_SCRATCH
                 ),
-                onBackClick = { navController.popBackStack() },
-                onApplyClick = { _ -> }
+                onBackClick = { navController.popBackStackSafely() },
+                onApplyClick = { _ -> },
+                onApplyCompletedToHome = {
+                    navController.navigate(Screen.DashBoard.createRoute("home")) {
+                        popUpTo(Screen.DashBoard.route) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
     }

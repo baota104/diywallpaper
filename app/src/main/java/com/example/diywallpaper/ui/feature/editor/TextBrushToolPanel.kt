@@ -34,6 +34,8 @@ import com.example.diywallpaper.R
 import com.example.diywallpaper.domain.model.design.EditorFontOption
 import com.example.diywallpaper.domain.model.design.TextBrushStyle
 import com.example.diywallpaper.domain.usecase.design.GetEditorTextLibraryUseCase
+import com.example.diywallpaper.ui.common.consumeTapForKeyboardDismiss
+import com.example.diywallpaper.ui.common.hideKeyboardOnTapOutside
 import com.example.diywallpaper.ui.components.editor.EditorColorPickerPanel
 import com.example.diywallpaper.ui.components.editor.EditorColorRow
 import com.example.diywallpaper.ui.components.editor.EditorFontSampleRow
@@ -88,6 +90,7 @@ fun TextBrushToolPanel(
     Column(
         modifier = modifier
             .heightIn(max = 308.dp)
+            .hideKeyboardOnTapOutside()
             .background(Surface),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -122,7 +125,7 @@ fun TextBrushToolPanel(
                     currentBrushSize
                 )
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().consumeTapForKeyboardDismiss()
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
